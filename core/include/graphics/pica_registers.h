@@ -56,3 +56,4 @@ struct RenderConfig {
 
 } // namespace Graphics
 } // namespace MHXX
+

@@ -9,38 +9,36 @@ on:
 
 jobs:
   build:
+    name: Build Android APK
     runs-on: ubuntu-latest
 
     steps:
-    - name: Checkout Repository
+    - name: Checkout Code
       uses: actions/checkout@v4
 
     - name: Set up JDK 17
-      uses: actions/setup-java@v3
+      uses: actions/setup-java@v4
       with:
         java-version: '17'
         distribution: 'temurin'
 
-    - name: Setup Android NDK & CMake
+    - name: Set up Android NDK & CMake
       uses: nttld/setup-ndk@v1
       with:
         ndk-version: r26b
         cmake-version: 3.22.1
 
-    - name: Grant execute permission for Gradle wrapper
-      working-directory: android
-      run: |
-        if [ -f gradlew ]; then chmod +x gradlew; fi
+    - name: Set up Gradle
+      uses: gradle/actions/setup-gradle@v3
 
-    - name: Build with Gradle
+    - name: Build Debug APK
       working-directory: android
       run: |
-        gradle assembleDebug || echo "Gradle wrapper will be used once bundled."
+        gradle assembleDebug --stacktrace
 
     - name: Upload APK Artifact
       uses: actions/upload-artifact@v4
       with:
-        name: mhxx-android-debug-apk
+        name: MHXX-Android-Native-APK
         path: android/app/build/outputs/apk/debug/*.apk
-        if-no-files-found: ignore
-
+        if-no-files-found: error

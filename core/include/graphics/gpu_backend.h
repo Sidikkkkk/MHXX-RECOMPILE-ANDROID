@@ -31,3 +31,4 @@ std::unique_ptr<IGpuBackend> CreateGpuBackend(RenderConfig::Backend type);
 
 } // namespace Graphics
 } // namespace MHXX
+
