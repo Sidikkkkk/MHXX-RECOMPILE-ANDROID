@@ -5,9 +5,11 @@ import android.opengl.GLSurfaceView
 import android.os.Bundle
 import android.view.MotionEvent
 import android.view.View
-import android.view.WindowInsets
-import android.view.WindowInsetsController
+import android.view.WindowManager
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.view.WindowCompat
+import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.WindowInsetsControllerCompat
 import com.nativeport.mhxx.bridge.NativeBridge
 import java.io.File
 import javax.microedition.khronos.egl.EGLConfig
@@ -21,7 +23,8 @@ class MainActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        enableImmersiveMode()
+        // Layar tetap menyala saat bermain
+        window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
 
         val romfsDir = File(getExternalFilesDir(null), "romfs").absolutePath
         val saveDir = File(filesDir, "savedata").absolutePath
@@ -37,8 +40,8 @@ class MainActivity : AppCompatActivity() {
                     NativeBridge.onSurfaceCreated(width, height)
                 }
 
-                override fun onSurfaceChanged(gl: GL10?, width: Int, height: Int) {
-                    NativeBridge.onSurfaceChanged(width, height)
+                override fun onSurfaceChanged(gl: GL10?, w: Int, h: Int) {
+                    NativeBridge.onSurfaceChanged(w, h)
                 }
 
                 override fun onDrawFrame(gl: GL10?) {
@@ -49,15 +52,27 @@ class MainActivity : AppCompatActivity() {
 
             // Handle touch events
             setOnTouchListener { _, event ->
-                val normX = event.x / width.toFloat()
-                val normY = event.y / height.toFloat()
+                val w = if (width > 0) width.toFloat() else 1f
+                val h = if (height > 0) height.toFloat() else 1f
+                val normX = event.x / w
+                val normY = event.y / h
                 val isDown = event.action == MotionEvent.ACTION_DOWN || event.action == MotionEvent.ACTION_MOVE
                 NativeBridge.sendTouchInput(normX, normY, isDown)
                 true
             }
         }
 
+        // PENTING: setContentView dipanggil SEBELUM mengaktifkan Immersive Mode!
         setContentView(glView)
+
+        enableImmersiveMode()
+    }
+
+    override fun onWindowFocusChanged(hasFocus: Boolean) {
+        super.onWindowFocusChanged(hasFocus)
+        if (hasFocus) {
+            enableImmersiveMode()
+        }
     }
 
     override fun onResume() {
@@ -71,13 +86,14 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun enableImmersiveMode() {
-        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.R) {
-            window.insetsController?.let { controller ->
-                controller.hide(WindowInsets.Type.statusBars() or WindowInsets.Type.navigationBars())
-                controller.systemBarsBehavior =
-                    WindowInsetsController.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
-            }
-        } else {
+        try {
+            WindowCompat.setDecorFitsSystemWindows(window, false)
+            val controller = WindowInsetsControllerCompat(window, window.decorView)
+            controller.hide(WindowInsetsCompat.Type.systemBars())
+            controller.systemBarsBehavior =
+                WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+        } catch (e: Exception) {
+            // Fallback untuk custom ROM / MIUI lama
             @Suppress("DEPRECATION")
             window.decorView.systemUiVisibility = (
                 View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
@@ -90,4 +106,3 @@ class MainActivity : AppCompatActivity() {
         }
     }
 }
-

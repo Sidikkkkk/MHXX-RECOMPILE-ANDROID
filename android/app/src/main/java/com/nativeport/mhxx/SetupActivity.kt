@@ -132,7 +132,18 @@ class SetupActivity : AppCompatActivity() {
     }
 
     private fun getFileName(uri: Uri): String {
-        return uri.path?.substringAfterLast('/') ?: uri.toString()
+        var name = "ROM_File.3ds"
+        try {
+            contentResolver.query(uri, null, null, null, null)?.use { cursor ->
+                val nameIndex = cursor.getColumnIndex(android.provider.OpenableColumns.DISPLAY_NAME)
+                if (nameIndex != -1 && cursor.moveToFirst()) {
+                    name = cursor.getString(nameIndex)
+                }
+            }
+        } catch (_: Exception) {
+            name = uri.lastPathSegment ?: "ROM_File.3ds"
+        }
+        return name
     }
 }
 

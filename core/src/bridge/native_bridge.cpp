@@ -49,7 +49,9 @@ Java_com_nativeport_mhxx_bridge_NativeBridge_onSurfaceCreated(
     jint width,
     jint height
 ) {
-    LOGI("Surface dibuat: %dx%d. Memulai GPU Renderer...", width, height);
+    int w = width > 0 ? width : 1280;
+    int h = height > 0 ? height : 720;
+    LOGI("Surface dibuat: %dx%d. Memulai GPU Renderer...", w, h);
     MHXX::Graphics::RenderConfig cfg;
     cfg.backend = MHXX::Graphics::RenderConfig::Backend::OpenGL_ES_3_2;
     cfg.resolution_scale = 1; // Default 1x untuk Snapdragon 680 (bisa diubah ke 2x di settings)
@@ -58,7 +60,7 @@ Java_com_nativeport_mhxx_bridge_NativeBridge_onSurfaceCreated(
 
     g_gpu_backend = MHXX::Graphics::CreateGpuBackend(cfg.backend);
     if (g_gpu_backend) {
-        g_gpu_backend->Initialize(width, height, cfg);
+        g_gpu_backend->Initialize(w, h, cfg);
         LOGI("GPU Backend aktif: %s", g_gpu_backend->GetBackendName());
     }
 }
@@ -70,7 +72,7 @@ Java_com_nativeport_mhxx_bridge_NativeBridge_onSurfaceChanged(
     jint width,
     jint height
 ) {
-    if (g_gpu_backend) {
+    if (g_gpu_backend && width > 0 && height > 0) {
         g_gpu_backend->Resize(width, height);
     }
 }
