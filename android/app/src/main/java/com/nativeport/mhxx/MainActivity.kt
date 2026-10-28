@@ -6,6 +6,7 @@ import android.os.Bundle
 import android.view.MotionEvent
 import android.view.View
 import android.view.WindowManager
+import android.widget.ScrollView
 import android.widget.TextView
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.view.WindowCompat
@@ -19,8 +20,10 @@ import javax.microedition.khronos.opengles.GL10
 class MainActivity : AppCompatActivity() {
 
     private lateinit var glView: GLSurfaceView
+    private lateinit var tvLog: TextView
+    private lateinit var scrollLog: ScrollView
+    private lateinit var btnToggleLog: TextView
 
-    // 3DS CTR Button Bitmasks
     companion object {
         const val KEY_A      = 1 shl 0
         const val KEY_B      = 1 shl 1
@@ -40,20 +43,58 @@ class MainActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        // Layar tetap menyala saat bermain
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
-
-        // PENTING: setContentView terlebih dahulu sebelum WindowInsets!
         setContentView(R.layout.activity_main)
         enableImmersiveMode()
+
+        tvLog = findViewById(R.id.tv_onscreen_log)
+        scrollLog = findViewById(R.id.scroll_log)
+        btnToggleLog = findViewById(R.id.btn_toggle_log)
+
+        // Setup On-Screen Log Listener
+        NativeBridge.logCallback = { message ->
+            runOnUiThread {
+                appendLog(message)
+            }
+        }
+
+        btnToggleLog.setOnClickListener {
+            if (scrollLog.visibility == View.VISIBLE) {
+                scrollLog.visibility = View.GONE
+                btnToggleLog.text = "[ LOG: OFF ]"
+                btnToggleLog.setTextColor(0xFF888888.toInt())
+            } else {
+                scrollLog.visibility = View.VISIBLE
+                btnToggleLog.text = "[ LOG: ON ]"
+                btnToggleLog.setTextColor(0xFF4CAF50.toInt())
+            }
+        }
+
+        val btnResetRom = findViewById<TextView?>(R.id.btn_reset_rom)
+        btnResetRom?.setOnClickListener {
+            val romfsFlag = File(getExternalFilesDir(null), "romfs/installed.flag")
+            if (romfsFlag.exists()) romfsFlag.delete()
+            val intent = Intent(this, SetupActivity::class.java)
+            startActivity(intent)
+            finish()
+        }
 
         val romfsDir = File(getExternalFilesDir(null), "romfs").absolutePath
         val saveDir = File(filesDir, "savedata").absolutePath
 
+        appendLog("[INIT] Memeriksa direktori game: $romfsDir")
+        val gameFile = File(romfsDir, "game.bin")
+        if (gameFile.exists()) {
+            val sizeMb = gameFile.length() / (1024 * 1024)
+            appendLog("[FS] Ditemukan game.bin ($sizeMb MB). Memulai mounting...")
+        } else {
+            appendLog("[WARN] game.bin tidak ditemukan! Silakan setup ulang dari menu awal.")
+        }
+
         // Inisialisasi engine
         NativeBridge.initNativeEngine(romfsDir, saveDir)
 
-        // Setup OpenGL ES 3.2 View dari Layout XML
+        // Setup OpenGL ES 3.2 View
         glView = findViewById(R.id.gl_surface)
         glView.setEGLContextClientVersion(3)
         glView.setRenderer(object : GLSurfaceView.Renderer {
@@ -71,7 +112,6 @@ class MainActivity : AppCompatActivity() {
         })
         glView.renderMode = GLSurfaceView.RENDERMODE_CONTINUOUSLY
 
-        // Handle touch screen input untuk Bottom Screen 3DS
         glView.setOnTouchListener { _, event ->
             val w = if (glView.width > 0) glView.width.toFloat() else 1f
             val h = if (glView.height > 0) glView.height.toFloat() else 1f
@@ -95,6 +135,11 @@ class MainActivity : AppCompatActivity() {
         bindControllerButton(R.id.btn_right, KEY_RIGHT)
         bindControllerButton(R.id.btn_start, KEY_START)
         bindControllerButton(R.id.btn_select, KEY_SELECT)
+    }
+
+    private fun appendLog(msg: String) {
+        tvLog.append("$msg\n")
+        scrollLog.post { scrollLog.fullScroll(View.FOCUS_DOWN) }
     }
 
     @SuppressLint("ClickableViewAccessibility")

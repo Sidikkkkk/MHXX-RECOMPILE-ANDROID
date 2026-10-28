@@ -4,6 +4,7 @@
 #include <vector>
 #include <memory>
 #include <cmath>
+#include <cstring>
 
 #define LOG_TAG "MHXX_GLES"
 #define LOGI(...) __android_log_print(ANDROID_LOG_INFO, LOG_TAG, __VA_ARGS__)
@@ -11,6 +12,16 @@
 
 namespace MHXX {
 namespace Graphics {
+
+static IGpuBackend* g_active_backend = nullptr;
+
+IGpuBackend* GetActiveGpuBackend() {
+    return g_active_backend;
+}
+
+void SetActiveGpuBackend(IGpuBackend* backend) {
+    g_active_backend = backend;
+}
 
 static const char* VERTEX_SHADER_SRC = R"(#version 320 es
 layout(location = 0) in vec2 a_Position;
@@ -62,11 +73,15 @@ public:
         glDisable(GL_DEPTH_TEST);
         glDisable(GL_CULL_FACE);
 
+        SetActiveGpuBackend(this);
         LOGI("GPU Backend aktif: OpenGL ES 3.2");
         return true;
     }
 
     void Shutdown() override {
+        if (g_active_backend == this) {
+            SetActiveGpuBackend(nullptr);
+        }
         if (m_program) {
             glDeleteProgram(m_program);
             m_program = 0;
@@ -105,6 +120,20 @@ public:
 
     void ExecuteCommandList(const uint32_t* cmd_list, size_t count) override {
         // Eksekusi PICA200 render commands
+    }
+
+    void UpdateTopFramebuffer(const void* pixels, int width, int height) override {
+        if (m_top_tex && pixels && width > 0 && height > 0) {
+            glBindTexture(GL_TEXTURE_2D, m_top_tex);
+            glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, width, height, GL_RGBA, GL_UNSIGNED_BYTE, pixels);
+        }
+    }
+
+    void UpdateBottomFramebuffer(const void* pixels, int width, int height) override {
+        if (m_bottom_tex && pixels && width > 0 && height > 0) {
+            glBindTexture(GL_TEXTURE_2D, m_bottom_tex);
+            glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, width, height, GL_RGBA, GL_UNSIGNED_BYTE, pixels);
+        }
     }
 
     void PresentScreens() override {

@@ -11,7 +11,7 @@
         android:layout_width="match_parent"
         android:layout_height="match_parent" />
 
-    <!-- Top Status HUD (FPS & Hardware Info) -->
+    <!-- Top Status HUD (FPS & Controls) -->
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
@@ -23,15 +23,47 @@
             android:id="@+id/tv_fps_info"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="MHXX NATIVE • 60 FPS • Adreno 610 (GLES 3.2)"
+            android:text="MHXX RECOMP • 60 FPS • Adreno 610"
             android:textColor="#C4841D"
             android:textSize="11sp"
             android:textStyle="bold"
-            android:background="#66000000"
+            android:background="#88000000"
             android:paddingStart="8dp"
             android:paddingEnd="8dp"
             android:paddingTop="3dp"
             android:paddingBottom="3dp" />
+
+        <!-- Tombol Toggle Log Console -->
+        <TextView
+            android:id="@+id/btn_toggle_log"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="[ LOG: ON ]"
+            android:textColor="#4CAF50"
+            android:textSize="11sp"
+            android:textStyle="bold"
+            android:background="#88000000"
+            android:paddingStart="8dp"
+            android:paddingEnd="8dp"
+            android:paddingTop="3dp"
+            android:paddingBottom="3dp"
+            android:layout_marginStart="8dp" />
+
+        <!-- Tombol Setup ROM Ulang -->
+        <TextView
+            android:id="@+id/btn_reset_rom"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="[ GANTI ROM ]"
+            android:textColor="#FF9800"
+            android:textSize="11sp"
+            android:textStyle="bold"
+            android:background="#88000000"
+            android:paddingStart="8dp"
+            android:paddingEnd="8dp"
+            android:paddingTop="3dp"
+            android:paddingBottom="3dp"
+            android:layout_marginStart="8dp" />
 
         <View
             android:layout_width="0dp"
@@ -63,6 +95,27 @@
             android:background="@drawable/btn_shoulder_bg"
             android:layout_marginEnd="8dp" />
     </LinearLayout>
+
+    <!-- On-Screen Live Log Terminal (Transparan di tengah atas) -->
+    <ScrollView
+        android:id="@+id/scroll_log"
+        android:layout_width="match_parent"
+        android:layout_height="140dp"
+        android:layout_marginTop="46dp"
+        android:layout_marginStart="16dp"
+        android:layout_marginEnd="16dp"
+        android:background="#99000000"
+        android:padding="8dp">
+
+        <TextView
+            android:id="@+id/tv_onscreen_log"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:fontFamily="monospace"
+            android:textColor="#00FF66"
+            android:textSize="10sp"
+            android:text="[RECOMP] Memulai Engine Monster Hunter XX Static Recompiler...\n" />
+    </ScrollView>
 
     <!-- Bottom Left: D-Pad / Movement Controls -->
     <RelativeLayout

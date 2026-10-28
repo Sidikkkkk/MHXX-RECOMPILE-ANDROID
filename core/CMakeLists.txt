@@ -15,6 +15,7 @@ set(CORE_SOURCES
     src/hle/svc_handler.cpp
     src/hle/ipc_dispatcher.cpp
     src/graphics/gles_renderer.cpp
+    src/recompiler/rom_loader.cpp
     src/recompiler/recompiler.cpp
 )
 

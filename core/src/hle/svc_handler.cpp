@@ -53,8 +53,9 @@ void HandleSyscall(uint32_t svc_id, void* cpu_ctx_ptr) {
             // SVC Paling Krusial: Komunikasi IPC antar modul game dan Horizon OS
             // r0: Session Handle (gsp::Gpu, snd:USER, hid:USER, fs:USER)
             uint32_t session_handle = ctx->r[0];
-            // TLS Command Buffer (pada thread aktif)
-            uint32_t* cmd_buffer = reinterpret_cast<uint32_t*>(0x1FF80080);
+            // TLS Command Buffer pada thread aktif dalam memori virtual CTR
+            uint8_t* tls_ptr = MHXX::Recompiler::GetMemoryPointer(ctx, 0x1FF80080);
+            uint32_t* cmd_buffer = reinterpret_cast<uint32_t*>(tls_ptr);
 
             IPC::DispatchServiceSync(session_handle, cmd_buffer);
             ctx->r[0] = 0; // RESULT_SUCCESS
