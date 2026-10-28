@@ -15,3 +15,4 @@ for ($i = 0; $i -lt 8; $i++) {
     $off = $len - 32 + ($i * 4)
     Write-Host "Offset $off (End-$((32 - $i*4))): $hex ($val)"
 }
+

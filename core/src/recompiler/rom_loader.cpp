@@ -3,6 +3,8 @@
 #include <cstdio>
 #include <cstring>
 #include <vector>
+#include <algorithm>
+#include <cstdint>
 
 namespace MHXX {
 namespace Loader {
@@ -112,7 +114,7 @@ bool LoadRomAndExtractCode(const std::string& romfs_dir, RomInfo& info, std::vec
     uint32_t part0_mu = 0;
     fread(&part0_mu, 4, 1, f);
     info.part0_offset = static_cast<uint64_t>(part0_mu) * 0x200;
-    SendLogToUI("[LOADER] Partisi Game NCCH 0 pada offset: 0x%lX", (unsigned long)info.part0_offset);
+    SendLogToUI("[LOADER] Partisi Game NCCH 0 pada offset: 0x%llX", static_cast<unsigned long long>(info.part0_offset));
 
     // Periksa NCCH Header
     fseek(f, info.part0_offset + 0x100, SEEK_SET);
@@ -143,9 +145,9 @@ bool LoadRomAndExtractCode(const std::string& romfs_dir, RomInfo& info, std::vec
     fread(&romfs_sz_mu, 4, 1, f);
     info.romfs_offset = info.part0_offset + static_cast<uint64_t>(romfs_mu) * 0x200;
     info.romfs_size = static_cast<uint64_t>(romfs_sz_mu) * 0x200;
-    SendLogToUI("[LOADER] ExeFS: 0x%lX (%.2f MB), RomFS: 0x%lX (%.2f MB)", 
-                (unsigned long)info.exefs_offset, info.exefs_size / (1024.0 * 1024.0),
-                (unsigned long)info.romfs_offset, info.romfs_size / (1024.0 * 1024.0));
+    SendLogToUI("[LOADER] ExeFS: 0x%llX (%.2f MB), RomFS: 0x%llX (%.2f MB)", 
+                static_cast<unsigned long long>(info.exefs_offset), info.exefs_size / (1024.0 * 1024.0),
+                static_cast<unsigned long long>(info.romfs_offset), info.romfs_size / (1024.0 * 1024.0));
 
     // Baca ExeFS Header (512 bytes / 10 file entries)
     fseek(f, info.exefs_offset, SEEK_SET);
@@ -208,3 +210,4 @@ bool LoadRomAndExtractCode(const std::string& romfs_dir, RomInfo& info, std::vec
 
 } // namespace Loader
 } // namespace MHXX
+

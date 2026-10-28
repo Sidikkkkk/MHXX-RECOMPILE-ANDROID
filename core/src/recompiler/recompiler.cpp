@@ -6,6 +6,8 @@
 #include <android/log.h>
 #include <cstring>
 #include <cmath>
+#include <algorithm>
+#include <cstdint>
 
 #define LOG_TAG "MHXX_RECOMP"
 #define LOGD(...) __android_log_print(ANDROID_LOG_DEBUG, LOG_TAG, __VA_ARGS__)
@@ -330,7 +332,9 @@ void ExecuteFrame() {
     // Log status berkala setiap 180 frame (~3 detik pada 60 FPS)
     if (ctx->frame_count % 180 == 0) {
         SendLogToUI("[RECOMP] Frame: %llu | Instr: %llu | PC: 0x%08X", 
-                    ctx->frame_count, ctx->instruction_count, ctx->r[15]);
+                    static_cast<unsigned long long>(ctx->frame_count), 
+                    static_cast<unsigned long long>(ctx->instruction_count), 
+                    ctx->r[15]);
     }
 }
 

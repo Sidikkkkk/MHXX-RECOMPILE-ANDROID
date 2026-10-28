@@ -7,3 +7,4 @@ for ($i = 0; $i -lt 32; $i++) {
     $addr = '0x{0:X8}' -f (0x00100000 + $offset)
     Write-Host "$addr : $hex"
 }
+

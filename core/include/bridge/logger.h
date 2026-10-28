@@ -9,3 +9,4 @@ void SendLogToUI(const char* fmt, ...);
 #ifdef __cplusplus
 }
 #endif
+
