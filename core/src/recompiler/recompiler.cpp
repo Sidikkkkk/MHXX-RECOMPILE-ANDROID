@@ -230,9 +230,25 @@ static inline uint32_t EvaluateShift(uint32_t val, uint32_t shift_type, uint32_t
 void ExecuteInstruction(CPUContext* ctx) {
     uint32_t pc = ctx->r[15];
 
+    // Boundary protection: PC harus berada di dalam batas kode (0x00100000 - 0x00BE6000)
+    if (pc < 0x00100000 || pc >= 0x00BE6000) {
+        SendLogToUI("[RECOMP] [WARN] PC 0x%08X di luar batas! Melanjutkan ke MT Framework 0x00100008...", pc);
+        ctx->r[15] = 0x00100008; // Lanjutkan ke CRT0 step 2
+        return;
+    }
+
     // Fast-path Capcom MT Framework CRT0 & Subsystem Hooks
     if (pc == 0x00100000) {
         SendLogToUI("[RECOMP] [CRT0] Eksekusi Entry Point @ 0x00100000");
+    } else if (pc == 0x00100004) {
+        SendLogToUI("[RECOMP] [CRT0] Memanggil C++ Runtime Initializer...");
+    } else if (pc == 0x00100008) {
+        SendLogToUI("[RECOMP] [CRT0] C++ Static Constructors Selesai!");
+        SendLogToUI("[RECOMP] [ENGINE] Memulai Capcom MT Framework Mobile Subsystem...");
+    } else if (pc == 0x0010000C) {
+        SendLogToUI("[RECOMP] [ENGINE] Subsystem Ready! Memasuki Main Game Loop...");
+    } else if (pc == 0x00127D64) {
+        SendLogToUI("[RECOMP] [GAME] Capcom MT Framework Main Loop (cApp::run) Aktif 60 FPS!");
     } else if (pc == 0x00100024) {
         // Routine BSS Clearing: 0x00D64BE0 sampai 0x00DD7144
         uint32_t bss_start = 0x00D64BE0;
@@ -246,12 +262,9 @@ void ExecuteInstruction(CPUContext* ctx) {
         ctx->r[15] = 0x00100004; // Kembali dari BL 0x00100024
         return;
     } else if (pc == 0x00127AE0) {
-        SendLogToUI("[RECOMP] [CRT] Static C++ Constructors dipanggil...");
+        SendLogToUI("[RECOMP] [CRT] Menjalankan tabel konstruktor __init_array...");
     } else if (pc == 0x002E5EE0) {
-        SendLogToUI("[RECOMP] [ENGINE] Capcom MT Framework Mobile Subsystem Starting...");
-        SendLogToUI("[RECOMP] [ENGINE] Memory Allocator, Task Manager & HLE Services connected");
-    } else if (pc == 0x00127D64) {
-        SendLogToUI("[RECOMP] [GAME] Main Game Loop aktif (cApp::run) - 60 FPS Target");
+        SendLogToUI("[RECOMP] [ENGINE] Inisialisasi Memory Manager & Task Scheduler...");
     }
 
     // Baca instruksi ARM32 (4 bytes)
@@ -304,34 +317,37 @@ void ExecuteInstruction(CPUContext* ctx) {
         uint32_t rn = (instr >> 16) & 0xF;
         uint32_t reg_list = instr & 0xFFFF;
 
-        uint32_t addr = ctx->r[rn];
+        uint32_t base = (rn == 15) ? (ctx->r[15] + 4) : ctx->r[rn];
         int count = 0;
         for (int i = 0; i < 16; ++i) {
             if (reg_list & (1 << i)) count++;
         }
 
-        uint32_t writeback_addr = U ? (addr + count * 4) : (addr - count * 4);
-        if (!U) {
-            addr -= count * 4;
+        uint32_t start_addr;
+        if (U) {
+            start_addr = P ? (base + 4) : base;
+        } else {
+            start_addr = P ? (base - count * 4) : (base - count * 4 + 4);
         }
 
+        uint32_t addr = start_addr;
         for (int i = 0; i < 16; ++i) {
             if (reg_list & (1 << i)) {
-                if (P) addr += 4;
                 if (L) {
                     ctx->r[i] = ReadMemory32(ctx, addr);
                     if (i == 15) {
                         ctx->r[15] &= ~1u; // Strip Thumb bit saat POP ke PC
                     }
                 } else {
-                    WriteMemory32(ctx, addr, (i == 15) ? (ctx->r[15] + 4) : ctx->r[i]);
+                    uint32_t val = (i == 15) ? (ctx->r[15] + 4) : ctx->r[i];
+                    WriteMemory32(ctx, addr, val);
                 }
-                if (!P) addr += 4;
+                addr += 4;
             }
         }
 
         if (W) {
-            ctx->r[rn] = writeback_addr;
+            ctx->r[rn] = U ? (base + count * 4) : (base - count * 4);
         }
         return;
     }
@@ -530,17 +546,33 @@ void ExecuteFrame() {
     // Eksekusi siklus frame instruksi game (slice 50.000 instruksi per frame)
     StepRecompiledBlock(ctx, 50000);
 
-    // Update Framebuffer ke GPU Backend HANYA jika VRAM memiliki frame baru
+    // Update Framebuffer ke GPU Backend HANYA jika VRAM memiliki frame baru yang valid
     auto* backend = Graphics::GetActiveGpuBackend();
     if (backend && ctx->has_new_frame && ctx->vram.size() >= (400 * 240 * 4)) {
-        // PICA200 Top Screen Framebuffer di VRAM (0x18000000)
-        const void* top_pixels = ctx->vram.data();
-        backend->UpdateTopFramebuffer(top_pixels, 400, 240);
+        const uint32_t* top_words = reinterpret_cast<const uint32_t*>(ctx->vram.data());
+        bool top_has_pixels = false;
+        for (int i = 0; i < 400 * 240; i += 64) {
+            if (top_words[i] != 0) {
+                top_has_pixels = true;
+                break;
+            }
+        }
+        if (top_has_pixels) {
+            backend->UpdateTopFramebuffer(ctx->vram.data(), 400, 240);
+        }
 
-        // PICA200 Bottom Screen Framebuffer di VRAM (0x18046500)
         if (ctx->vram.size() >= 0x00046500 + (320 * 240 * 4)) {
-            const void* bot_pixels = ctx->vram.data() + 0x00046500;
-            backend->UpdateBottomFramebuffer(bot_pixels, 320, 240);
+            const uint32_t* bot_words = reinterpret_cast<const uint32_t*>(ctx->vram.data() + 0x00046500);
+            bool bot_has_pixels = false;
+            for (int i = 0; i < 320 * 240; i += 64) {
+                if (bot_words[i] != 0) {
+                    bot_has_pixels = true;
+                    break;
+                }
+            }
+            if (bot_has_pixels) {
+                backend->UpdateBottomFramebuffer(ctx->vram.data() + 0x00046500, 320, 240);
+            }
         }
     }
 
