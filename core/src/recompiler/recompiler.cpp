@@ -142,6 +142,7 @@ void InitRuntime(const std::string& romfs_dir) {
     ctx->r[15] = 0x00100000; // PC = Entry point CRT0
     ctx->current_pc = 0x00100000;
     ctx->is_running = true;
+    ctx->has_new_frame = false;
     ctx->instruction_count = 0;
     ctx->frame_count = 0;
 
@@ -175,6 +176,56 @@ static inline bool CheckCondition(uint32_t cond, uint32_t cpsr) {
     }
 }
 
+// Barrel Shifter Evaluator
+static inline uint32_t EvaluateShift(uint32_t val, uint32_t shift_type, uint32_t amount, bool& carry_out, bool carry_in) {
+    if (amount == 0) {
+        carry_out = carry_in;
+        return val;
+    }
+    switch (shift_type) {
+        case 0: // LSL
+            if (amount < 32) {
+                carry_out = (val >> (32 - amount)) & 1;
+                return val << amount;
+            } else if (amount == 32) {
+                carry_out = val & 1;
+                return 0;
+            } else {
+                carry_out = false;
+                return 0;
+            }
+        case 1: // LSR
+            if (amount < 32) {
+                carry_out = (val >> (amount - 1)) & 1;
+                return val >> amount;
+            } else if (amount == 32) {
+                carry_out = (val >> 31) & 1;
+                return 0;
+            } else {
+                carry_out = false;
+                return 0;
+            }
+        case 2: // ASR
+            if (amount < 32) {
+                carry_out = (val >> (amount - 1)) & 1;
+                return static_cast<uint32_t>(static_cast<int32_t>(val) >> amount);
+            } else {
+                bool sign = (val >> 31) & 1;
+                carry_out = sign;
+                return sign ? 0xFFFFFFFF : 0;
+            }
+        case 3: // ROR
+            amount %= 32;
+            if (amount == 0) {
+                carry_out = (val >> 31) & 1;
+                return val;
+            }
+            carry_out = (val >> (amount - 1)) & 1;
+            return (val >> amount) | (val << (32 - amount));
+    }
+    return val;
+}
+
 // Recompile & Execute Instruction Dispatcher
 void ExecuteInstruction(CPUContext* ctx) {
     uint32_t pc = ctx->r[15];
@@ -198,7 +249,7 @@ void ExecuteInstruction(CPUContext* ctx) {
         SendLogToUI("[RECOMP] [CRT] Static C++ Constructors dipanggil...");
     } else if (pc == 0x002E5EE0) {
         SendLogToUI("[RECOMP] [ENGINE] Capcom MT Framework Mobile Subsystem Starting...");
-        SendLogToUI("[RECOMP] [ENGINE] Inisialisasi Memory Manager & Render Pipeline...");
+        SendLogToUI("[RECOMP] [ENGINE] Memory Allocator, Task Manager & HLE Services connected");
     } else if (pc == 0x00127D64) {
         SendLogToUI("[RECOMP] [GAME] Main Game Loop aktif (cApp::run) - 60 FPS Target");
     }
@@ -224,11 +275,10 @@ void ExecuteInstruction(CPUContext* ctx) {
     if ((instr & 0x0E000000) == 0x0A000000) {
         bool link = (instr >> 24) & 1;
         int32_t imm24 = instr & 0x00FFFFFF;
-        // Sign extend 24-bit ke 32-bit lalu geser 2
         if (imm24 & 0x00800000) {
             imm24 |= 0xFF000000;
         }
-        int32_t offset = (imm24 << 2) + 4; // Ditambah 4 karena PC sudah increment 4
+        int32_t offset = (imm24 << 2) + 4;
         if (link) {
             ctx->r[14] = ctx->r[15]; // Simpan return address ke LR
         }
@@ -240,60 +290,225 @@ void ExecuteInstruction(CPUContext* ctx) {
     if ((instr & 0x0FFFFFF0) == 0x012FFF10) {
         uint32_t rm = instr & 0xF;
         uint32_t target = ctx->r[rm];
-        if (target == 0) {
-            // Selesai atau return ke caller
-            return;
-        }
+        if (target == 0) return;
         ctx->r[15] = target & ~1u; // Strip Thumb bit
         return;
     }
 
-    // 4. Data Processing (MOV, ADD, SUB, CMP, LDR literal sederhana)
-    uint32_t opcode = (instr >> 21) & 0xF;
-    uint32_t rn = (instr >> 16) & 0xF;
-    uint32_t rd = (instr >> 12) & 0xF;
-    bool is_imm = (instr >> 25) & 1;
+    // 4. Block Data Transfer (LDM / STM - PUSH & POP)
+    if ((instr & 0x0E000000) == 0x08000000) {
+        bool P = (instr >> 24) & 1;
+        bool U = (instr >> 23) & 1;
+        bool W = (instr >> 21) & 1;
+        bool L = (instr >> 20) & 1;
+        uint32_t rn = (instr >> 16) & 0xF;
+        uint32_t reg_list = instr & 0xFFFF;
 
-    uint32_t op2 = 0;
-    if (is_imm) {
-        uint32_t imm8 = instr & 0xFF;
-        uint32_t rot = ((instr >> 8) & 0xF) * 2;
-        op2 = (rot == 0) ? imm8 : (imm8 >> rot) | (imm8 << (32 - rot));
-    } else {
-        uint32_t rm = instr & 0xF;
-        op2 = ctx->r[rm];
+        uint32_t addr = ctx->r[rn];
+        int count = 0;
+        for (int i = 0; i < 16; ++i) {
+            if (reg_list & (1 << i)) count++;
+        }
+
+        uint32_t writeback_addr = U ? (addr + count * 4) : (addr - count * 4);
+        if (!U) {
+            addr -= count * 4;
+        }
+
+        for (int i = 0; i < 16; ++i) {
+            if (reg_list & (1 << i)) {
+                if (P) addr += 4;
+                if (L) {
+                    ctx->r[i] = ReadMemory32(ctx, addr);
+                    if (i == 15) {
+                        ctx->r[15] &= ~1u; // Strip Thumb bit saat POP ke PC
+                    }
+                } else {
+                    WriteMemory32(ctx, addr, (i == 15) ? (ctx->r[15] + 4) : ctx->r[i]);
+                }
+                if (!P) addr += 4;
+            }
+        }
+
+        if (W) {
+            ctx->r[rn] = writeback_addr;
+        }
+        return;
     }
 
-    // Eksekusi opcode umum
-    switch (opcode) {
-        case 0x0: // AND
-            ctx->r[rd] = ctx->r[rn] & op2;
-            break;
-        case 0x1: // EOR
-            ctx->r[rd] = ctx->r[rn] ^ op2;
-            break;
-        case 0x2: // SUB
-            ctx->r[rd] = ctx->r[rn] - op2;
-            break;
-        case 0x4: // ADD
-            ctx->r[rd] = ctx->r[rn] + op2;
-            break;
-        case 0xA: // CMP
-            {
-                uint32_t res = ctx->r[rn] - op2;
-                if (res == 0) ctx->cpsr |= (1u << 30); else ctx->cpsr &= ~(1u << 30); // Z flag
-                if (ctx->r[rn] >= op2) ctx->cpsr |= (1u << 29); else ctx->cpsr &= ~(1u << 29); // C flag
-                if (res & 0x80000000) ctx->cpsr |= (1u << 31); else ctx->cpsr &= ~(1u << 31); // N flag
+    // 5. Halfword & Signed Data Transfer (LDRH, STRH, LDRSB, LDRSH)
+    if ((instr & 0x0E000090) == 0x00000090 && (instr & 0x00000060) != 0) {
+        bool P = (instr >> 24) & 1;
+        bool U = (instr >> 23) & 1;
+        bool is_imm = (instr >> 22) & 1;
+        bool W = (instr >> 21) & 1;
+        bool L = (instr >> 20) & 1;
+        uint32_t rn = (instr >> 16) & 0xF;
+        uint32_t rd = (instr >> 12) & 0xF;
+        uint32_t S = (instr >> 6) & 1;
+        uint32_t H = (instr >> 5) & 1;
+
+        uint32_t offset = 0;
+        if (is_imm) {
+            offset = (((instr >> 8) & 0xF) << 4) | (instr & 0xF);
+        } else {
+            uint32_t rm = instr & 0xF;
+            offset = ctx->r[rm];
+        }
+
+        uint32_t base = (rn == 15) ? (ctx->r[15] + 4) : ctx->r[rn];
+        uint32_t target_addr = U ? (base + offset) : (base - offset);
+        uint32_t access_addr = P ? target_addr : base;
+
+        if (L) {
+            if (!S && H) { // LDRH
+                ctx->r[rd] = ReadMemory16(ctx, access_addr);
+            } else if (S && !H) { // LDRSB
+                int8_t s8 = static_cast<int8_t>(ReadMemory8(ctx, access_addr));
+                ctx->r[rd] = static_cast<uint32_t>(static_cast<int32_t>(s8));
+            } else if (S && H) { // LDRSH
+                int16_t s16 = static_cast<int16_t>(ReadMemory16(ctx, access_addr));
+                ctx->r[rd] = static_cast<uint32_t>(static_cast<int32_t>(s16));
             }
-            break;
-        case 0xD: // MOV
-            ctx->r[rd] = op2;
-            break;
-        case 0xE: // BIC
-            ctx->r[rd] = ctx->r[rn] & ~op2;
-            break;
-        default:
-            break;
+            if (rd == 15) ctx->r[15] &= ~1u;
+        } else {
+            if (!S && H) { // STRH
+                WriteMemory16(ctx, access_addr, static_cast<uint16_t>(ctx->r[rd] & 0xFFFF));
+            }
+        }
+
+        if (!P || W) {
+            if (rn != 15) ctx->r[rn] = target_addr;
+        }
+        return;
+    }
+
+    // 6. Single Data Transfer (LDR, STR, LDRB, STRB)
+    if ((instr & 0x0C000000) == 0x04000000) {
+        bool is_reg_offset = (instr >> 25) & 1;
+        bool P = (instr >> 24) & 1;
+        bool U = (instr >> 23) & 1;
+        bool B = (instr >> 22) & 1;
+        bool W = (instr >> 21) & 1;
+        bool L = (instr >> 20) & 1;
+        uint32_t rn = (instr >> 16) & 0xF;
+        uint32_t rd = (instr >> 12) & 0xF;
+
+        uint32_t offset = 0;
+        if (!is_reg_offset) {
+            offset = instr & 0xFFF;
+        } else {
+            uint32_t rm = instr & 0xF;
+            uint32_t shift_type = (instr >> 5) & 3;
+            uint32_t shift_imm = (instr >> 7) & 0x1F;
+            bool dummy = false;
+            offset = EvaluateShift(ctx->r[rm], shift_type, shift_imm, dummy, (ctx->cpsr >> 29) & 1);
+        }
+
+        uint32_t base = (rn == 15) ? (ctx->r[15] + 4) : ctx->r[rn];
+        uint32_t target_addr = U ? (base + offset) : (base - offset);
+        uint32_t access_addr = P ? target_addr : base;
+
+        if (L) {
+            if (B) {
+                ctx->r[rd] = ReadMemory8(ctx, access_addr);
+            } else {
+                ctx->r[rd] = ReadMemory32(ctx, access_addr);
+                if (rd == 15) ctx->r[15] &= ~1u;
+            }
+        } else {
+            uint32_t val = (rd == 15) ? (ctx->r[15] + 4) : ctx->r[rd];
+            if (B) {
+                WriteMemory8(ctx, access_addr, static_cast<uint8_t>(val & 0xFF));
+            } else {
+                WriteMemory32(ctx, access_addr, val);
+            }
+        }
+
+        if (!P || W) {
+            if (rn != 15) ctx->r[rn] = target_addr;
+        }
+        return;
+    }
+
+    // 7. Multiply (MUL, MLA)
+    if ((instr & 0x0FC000F0) == 0x00000090) {
+        bool A = (instr >> 21) & 1;
+        bool S = (instr >> 20) & 1;
+        uint32_t rd = (instr >> 16) & 0xF;
+        uint32_t rn = (instr >> 12) & 0xF;
+        uint32_t rs = (instr >> 8) & 0xF;
+        uint32_t rm = instr & 0xF;
+
+        uint32_t res = ctx->r[rm] * ctx->r[rs];
+        if (A) res += ctx->r[rn];
+        ctx->r[rd] = res;
+        if (S) {
+            if (res == 0) ctx->cpsr |= (1u << 30); else ctx->cpsr &= ~(1u << 30);
+            if (res & 0x80000000) ctx->cpsr |= (1u << 31); else ctx->cpsr &= ~(1u << 31);
+        }
+        return;
+    }
+
+    // 8. Data Processing (MOV, MVN, ADD, SUB, CMP, AND, ORR, etc.)
+    if ((instr & 0x0C000000) == 0x00000000) {
+        uint32_t opcode = (instr >> 21) & 0xF;
+        bool S = (instr >> 20) & 1;
+        uint32_t rn = (instr >> 16) & 0xF;
+        uint32_t rd = (instr >> 12) & 0xF;
+        bool is_imm = (instr >> 25) & 1;
+
+        bool carry = (ctx->cpsr >> 29) & 1;
+        uint32_t op2 = 0;
+        if (is_imm) {
+            uint32_t imm8 = instr & 0xFF;
+            uint32_t rot = ((instr >> 8) & 0xF) * 2;
+            op2 = (rot == 0) ? imm8 : (imm8 >> rot) | (imm8 << (32 - rot));
+            if (rot != 0) carry = (op2 >> 31) & 1;
+        } else {
+            uint32_t rm = instr & 0xF;
+            uint32_t shift_type = (instr >> 5) & 3;
+            uint32_t shift_imm = (instr >> 7) & 0x1F;
+            op2 = EvaluateShift(ctx->r[rm], shift_type, shift_imm, carry, carry);
+        }
+
+        uint32_t op1 = (rn == 15) ? (ctx->r[15] + 4) : ctx->r[rn];
+        uint32_t res = 0;
+        bool write_rd = true;
+
+        switch (opcode) {
+            case 0x0: res = op1 & op2; break; // AND
+            case 0x1: res = op1 ^ op2; break; // EOR
+            case 0x2: res = op1 - op2; break; // SUB
+            case 0x3: res = op2 - op1; break; // RSB
+            case 0x4: res = op1 + op2; break; // ADD
+            case 0x5: res = op1 + op2 + ((ctx->cpsr >> 29) & 1); break; // ADC
+            case 0x6: res = op1 - op2 - (!((ctx->cpsr >> 29) & 1)); break; // SBC
+            case 0x7: res = op2 - op1 - (!((ctx->cpsr >> 29) & 1)); break; // RSC
+            case 0x8: res = op1 & op2; write_rd = false; break; // TST
+            case 0x9: res = op1 ^ op2; write_rd = false; break; // TEQ
+            case 0xA: res = op1 - op2; write_rd = false; break; // CMP
+            case 0xB: res = op1 + op2; write_rd = false; break; // CMN
+            case 0xC: res = op1 | op2; break; // ORR
+            case 0xD: res = op2; break;       // MOV
+            case 0xE: res = op1 & ~op2; break;// BIC
+            case 0xF: res = ~op2; break;      // MVN
+        }
+
+        if (write_rd) {
+            ctx->r[rd] = res;
+            if (rd == 15) ctx->r[15] &= ~1u;
+        }
+
+        if (S) {
+            if (res == 0) ctx->cpsr |= (1u << 30); else ctx->cpsr &= ~(1u << 30);
+            if (res & 0x80000000) ctx->cpsr |= (1u << 31); else ctx->cpsr &= ~(1u << 31);
+            if (opcode == 0x2 || opcode == 0xA) { // SUB / CMP
+                if (op1 >= op2) ctx->cpsr |= (1u << 29); else ctx->cpsr &= ~(1u << 29);
+            } else if (opcode == 0x4 || opcode == 0xB) { // ADD / CMN
+                if (static_cast<uint64_t>(op1) + op2 >= 0x100000000ULL) ctx->cpsr |= (1u << 29); else ctx->cpsr &= ~(1u << 29);
+            }
+        }
     }
 }
 
@@ -312,12 +527,12 @@ void ExecuteFrame() {
 
     ctx->frame_count++;
 
-    // Eksekusi siklus frame instruksi game (slice 20.000 instruksi per frame)
-    StepRecompiledBlock(ctx, 20000);
+    // Eksekusi siklus frame instruksi game (slice 50.000 instruksi per frame)
+    StepRecompiledBlock(ctx, 50000);
 
-    // Update Framebuffer ke GPU Backend jika ada render aktif
+    // Update Framebuffer ke GPU Backend HANYA jika VRAM memiliki frame baru
     auto* backend = Graphics::GetActiveGpuBackend();
-    if (backend && ctx->vram.size() >= (400 * 240 * 4)) {
+    if (backend && ctx->has_new_frame && ctx->vram.size() >= (400 * 240 * 4)) {
         // PICA200 Top Screen Framebuffer di VRAM (0x18000000)
         const void* top_pixels = ctx->vram.data();
         backend->UpdateTopFramebuffer(top_pixels, 400, 240);

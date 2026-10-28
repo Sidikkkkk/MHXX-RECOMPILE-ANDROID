@@ -1,4 +1,5 @@
 #include "hle/ipc.h"
+#include "recompiler/recompiler.h"
 #include <android/log.h>
 
 #define LOG_TAG "MHXX_IPC"
@@ -20,11 +21,14 @@ enum ServiceType {
 
 void HandleGspGpuCommand(uint32_t* cmd_buffer, uint16_t cmd_id) {
     LOGD("GSP::Gpu Command ID: 0x%04X", cmd_id);
+    auto* ctx = Recompiler::GetCPUContext();
     switch (cmd_id) {
         case 0x0001: // TriggerCmdReqQueue (Kirim perintah grafis ke GPU PICA200)
+            if (ctx) ctx->has_new_frame = true;
             cmd_buffer[1] = 0; // Sukses (ResultCode)
             break;
         case 0x0005: // SetBufferSwap (Ganti buffer layar atas/bawah)
+            if (ctx) ctx->has_new_frame = true;
             cmd_buffer[1] = 0;
             break;
         default:

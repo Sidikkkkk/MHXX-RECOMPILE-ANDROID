@@ -21,6 +21,7 @@ struct CPUContext {
 
     bool is_running = false;
     bool is_initialized = false;
+    bool has_new_frame = false;
     uint64_t instruction_count = 0;
     uint64_t frame_count = 0;
     uint32_t current_pc = 0x00100000;
