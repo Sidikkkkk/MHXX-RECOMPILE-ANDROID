@@ -1,5 +1,6 @@
 #include "hle/ctr_os.h"
 #include <android/log.h>
+#include <cstdio>
 
 #define LOG_TAG "MHXX_HLE"
 #define LOGD(...) __android_log_print(ANDROID_LOG_DEBUG, LOG_TAG, __VA_ARGS__)
@@ -14,7 +15,17 @@ void InitializeOS(const std::string& romfs_dir, const std::string& save_dir) {
     g_sys_config.save_root = save_dir;
     g_sys_config.is_running = true;
 
-    LOGD("Inisialisasi Horizon OS HLE Subsystems...");
+    LOGD("Inisialisasi Horizon OS HLE Subsystems di %s", romfs_dir.c_str());
+
+    std::string game_bin = romfs_dir + "/game.bin";
+    FILE* f = fopen(game_bin.c_str(), "rb");
+    if (f) {
+        fseek(f, 0, SEEK_END);
+        long sz = ftell(f);
+        fclose(f);
+        LOGD("Ditemukan game.bin! Ukuran: %ld bytes (%.2f MB)", sz, sz / (1024.0 * 1024.0));
+    }
+
     Services::InitFS();
     Services::InitGSP();
     Services::InitSND();
