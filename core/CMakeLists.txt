@@ -14,6 +14,7 @@ set(CORE_SOURCES
     src/hle/ctr_os.cpp
     src/hle/svc_handler.cpp
     src/hle/ipc_dispatcher.cpp
+    src/graphics/gles_renderer.cpp
     src/recompiler/recompiler.cpp
 )
 
@@ -23,10 +24,14 @@ add_library(mhxx_native SHARED ${CORE_SOURCES})
 # Target Android native system libraries
 find_library(log-lib log)
 find_library(android-lib android)
+find_library(gles3-lib GLESv3)
+find_library(egl-lib EGL)
 
 target_link_libraries(mhxx_native
     PRIVATE
     ${log-lib}
     ${android-lib}
+    ${gles3-lib}
+    ${egl-lib}
 )
 
