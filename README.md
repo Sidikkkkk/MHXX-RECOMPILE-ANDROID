@@ -17,12 +17,19 @@ mhxx-android/
 │   └── patches/                   <-- Patch terjemahan / mod 60fps (opsional)
 │
 ├── extracted/                     <-- [HASIL EKSTRAKSI OTOMATIS]
-│   ├── exefs/                     <-- Berisi code.bin (biner ARM11 game)
-│   ├── romfs/                     <-- Aset game (model 3D, suara, tekstur)
+│   ├── exefs/
+│   │   ├── mhxx.elf               <-- Biner ELF ARM 32-bit (12.4 MB)
+│   │   ├── code_decompressed.bin  <-- Biner ARM11 mentah hasil dekompresi BLZ
+│   │   └── code.bin               <-- Biner asli terkompresi
+│   ├── romfs/
+│   │   └── romfs.bin              <-- Seluruh aset game ter-ekstrak (2.21 GB)
 │   └── updates/                   <-- Aset & patch update v1.4.0
 │
 ├── tools/                         <-- Tooling ekstraksi & pemrosesan biner
-│   ├── extract_game.ps1           <-- Script ekstraksi untuk Windows PowerShell
+│   ├── extract_game.ps1           <-- Script ekstraksi awal (.3ds/.cia)
+│   ├── extract_romfs.ps1          <-- Script ekstraksi RomFS (2.21 GB)
+│   ├── codebin2elf.ps1            <-- Konverter code.bin ke standard ELF ARM32
+│   ├── scan_svc.ps1               <-- Pemindai instruksi syscall (SVC) 3DS
 │   ├── extract_game.py            <-- Script ekstraksi Python
 │   └── requirements.txt
 │

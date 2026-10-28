@@ -12,6 +12,8 @@ include_directories(
 set(CORE_SOURCES
     src/bridge/native_bridge.cpp
     src/hle/ctr_os.cpp
+    src/hle/svc_handler.cpp
+    src/hle/ipc_dispatcher.cpp
     src/recompiler/recompiler.cpp
 )
 

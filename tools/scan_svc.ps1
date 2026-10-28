@@ -1,0 +1,172 @@
+# ==============================================================================
+# MHXX Android Native Port - 3DS SVC (Supervisor Call) Scanner
+# Scans ARM32 and Thumb instructions in mhxx.elf for Horizon OS kernel calls
+# ==============================================================================
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+
+$ProjectRoot = (Get-Item $PSScriptRoot).Parent.FullName
+$ElfPath = Join-Path $ProjectRoot "extracted\exefs\mhxx.elf"
+
+if (!(Test-Path $ElfPath)) {
+    Write-Host "[!] mhxx.elf tidak ditemukan di extracted\exefs!" -ForegroundColor Red
+    exit 1
+}
+
+Write-Host "=================================================================" -ForegroundColor Cyan
+Write-Host "       MHXX ANDROID NATIVE PORT - 3DS SVC SYSCALL SCANNER        " -ForegroundColor Cyan
+Write-Host "=================================================================" -ForegroundColor Cyan
+
+# 3DS Horizon OS SVC Mapping Dictionary
+$svcMap = @{
+    0x01 = "ControlMemory"
+    0x02 = "QueryMemory"
+    0x03 = "ExitProcess"
+    0x04 = "GetProcessAffinityMask"
+    0x05 = "SetProcessAffinityMask"
+    0x06 = "GetProcessIdealProcessor"
+    0x07 = "SetProcessIdealProcessor"
+    0x08 = "CreateThread"
+    0x09 = "ExitThread"
+    0x0A = "SleepThread"
+    0x0B = "GetThreadPriority"
+    0x0C = "SetThreadPriority"
+    0x0D = "GetThreadAffinityMask"
+    0x0E = "SetThreadAffinityMask"
+    0x0F = "GetThreadIdealProcessor"
+    0x10 = "SetThreadIdealProcessor"
+    0x11 = "GetCurrentProcessorNumber"
+    0x12 = "CreateMutex"
+    0x13 = "ReleaseMutex"
+    0x14 = "CreateSemaphore"
+    0x15 = "ReleaseSemaphore"
+    0x16 = "CreateEvent"
+    0x17 = "SignalEvent"
+    0x18 = "ClearEvent"
+    0x19 = "ResetEvent"
+    0x1A = "CreateTimer"
+    0x1B = "SetTimer"
+    0x1C = "CancelTimer"
+    0x1D = "ClearTimer"
+    0x1E = "CreateMemoryBlock"
+    0x1F = "MapMemoryBlock"
+    0x20 = "UnmapMemoryBlock"
+    0x21 = "CreateAddressArbiter"
+    0x22 = "ArbitrateAddress"
+    0x23 = "CloseHandle"
+    0x24 = "WaitSynchronization1"
+    0x25 = "WaitSynchronizationN"
+    0x26 = "SignalAndWait"
+    0x27 = "DuplicateHandle"
+    0x28 = "GetSystemTick"
+    0x29 = "GetHandleInfo"
+    0x2A = "GetSystemInfo"
+    0x2B = "GetProcessInfo"
+    0x2C = "GetThreadInfo"
+    0x2D = "ConnectToPort"
+    0x32 = "SendSyncRequest"
+    0x33 = "OpenProcess"
+    0x34 = "OpenThread"
+    0x35 = "GetProcessId"
+    0x36 = "GetProcessIdOfThread"
+    0x37 = "GetThreadId"
+    0x38 = "GetResourceLimit"
+    0x39 = "GetResourceLimitLimitValues"
+    0x3A = "GetResourceLimitCurrentValues"
+    0x3B = "GetThreadContext"
+    0x3C = "Break"
+    0x3D = "OutputDebugString"
+    0x3E = "ControlPerformanceCounter"
+    0x70 = "Backdoor"
+}
+
+$stream = [System.IO.File]::OpenRead($ElfPath)
+$reader = New-Object System.IO.BinaryReader($stream)
+
+$textVAddr = 0x00100000
+$textSize = 11425536
+$fileOffset = 0x1000 # Offset body di mhxx.elf
+
+$stream.Seek($fileOffset, [System.IO.SeekOrigin]::Begin) | Out-Null
+$codeBytes = $reader.ReadBytes($textSize)
+$reader.Close()
+$stream.Close()
+
+Write-Host "[*] Memindai 10.9 MB kode ARM32 untuk instruksi SVC..." -ForegroundColor Yellow
+
+$svcHits = @{}
+$svcLocations = @{}
+
+# Scan 4-byte aligned ARM32 instructions
+for ($i = 0; $i -lt ($textSize - 4); $i += 4) {
+    # ARM32 SVC instruction: [imm8, 0x00, 0x00, 0xEF] (cond AL = 0xE)
+    if ($codeBytes[$i + 3] -eq 0xEF -and $codeBytes[$i + 2] -eq 0x00 -and $codeBytes[$i + 1] -eq 0x00) {
+        $svcNum = $codeBytes[$i]
+        $vaddr = $textVAddr + $i
+
+        if (-not $svcHits.ContainsKey($svcNum)) {
+            $svcHits[$svcNum] = 0
+            $svcLocations[$svcNum] = @()
+        }
+        $svcHits[$svcNum]++
+        if ($svcLocations[$svcNum].Count -lt 3) {
+            $svcLocations[$svcNum] += "0x$([Convert]::ToString($vaddr, 16).ToUpper())"
+        }
+    }
+}
+
+Write-Host "`n=== DAFTAR SYSCALL 3DS YANG DIGUNAKAN MONSTER HUNTER XX ===" -ForegroundColor Cyan
+Write-Host "Total jenis Syscall ditemukan: $($svcHits.Keys.Count)`n" -ForegroundColor White
+
+$sortedKeys = $svcHits.Keys | Sort-Object { $svcHits[$_] } -Descending
+
+foreach ($k in $sortedKeys) {
+    $intKey = [int]$k
+    $name = if ($svcMap.ContainsKey($intKey)) { $svcMap[$intKey] } else { "Unknown_0x$([Convert]::ToString($intKey, 16).ToUpper())" }
+    $count = $svcHits[$k]
+    $locs = ($svcLocations[$k] -join ", ")
+    $hexNum = "0x$([Convert]::ToString($intKey, 16).ToUpper().PadLeft(2, '0'))"
+    
+    $color = "Green"
+    if ($name -eq "SendSyncRequest") { $color = "Magenta" }
+    elseif ($name -match "Thread|Mutex|Sync|Event") { $color = "Yellow" }
+
+    Write-Host ("  [{0}] SVC {1,-26} : {2,4} pemanggilan  (Contoh: {3})" -f $hexNum, $name, $count, $locs) -ForegroundColor $color
+}
+
+# Generate C++ Header svc_table.h
+$cppHeaderPath = Join-Path $ProjectRoot "core\include\hle\svc_table.h"
+$headerContent = @"
+#pragma once
+#include <cstdint>
+
+// Auto-generated 3DS Horizon OS Syscall Table for Monster Hunter Double Cross (Rabbit_R)
+// Generated by tools/scan_svc.ps1
+
+namespace MHXX {
+namespace CTR {
+namespace SVC {
+
+enum SyscallID : uint32_t {
+"@
+
+foreach ($k in ($svcHits.Keys | Sort-Object)) {
+    $intKey = [int]$k
+    $name = if ($svcMap.ContainsKey($intKey)) { $svcMap[$intKey] } else { "Unknown_0x$([Convert]::ToString($intKey, 16).ToUpper())" }
+    $hexNum = "0x$([Convert]::ToString($intKey, 16).ToUpper().PadLeft(2, '0'))"
+    $headerContent += "`n    SVC_$name = $hexNum,"
+}
+
+$headerContent += @"
+
+};
+
+// Prototipe Handler Syscall yang harus diimplementasikan di core C++
+void HandleSyscall(uint32_t svc_id, void* cpu_context);
+
+} // namespace SVC
+} // namespace CTR
+} // namespace MHXX
+"@
+
+[System.IO.File]::WriteAllText($cppHeaderPath, $headerContent)
+Write-Host "`n[OK] Header C++ HLE berhasil dibuat: core\include\hle\svc_table.h" -ForegroundColor Green
