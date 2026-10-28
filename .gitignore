@@ -1,0 +1,64 @@
+# ==========================================
+# MHXX Android Native Port - .gitignore
+# ==========================================
+
+# CRITICAL: Game ROMs and Copyrighted Assets
+# Never push proprietary binaries to GitHub!
+inputs/rom/*
+!inputs/rom/.gitkeep
+inputs/updates/*
+!inputs/updates/.gitkeep
+inputs/patches/*
+!inputs/patches/.gitkeep
+
+extracted/exefs/*
+!extracted/exefs/.gitkeep
+extracted/romfs/*
+!extracted/romfs/.gitkeep
+extracted/updates/*
+!extracted/updates/.gitkeep
+
+*.3ds
+*.cia
+*.cxi
+*.cfa
+*.bin
+*.arc
+*.bcstm
+*.bclgt
+*.dat
+
+# C++ Build & NDK
+core/build/
+.cxx/
+*.o
+*.obj
+*.so
+*.a
+*.dll
+*.dylib
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+
+# Android Studio & Gradle
+.gradle/
+build/
+android/.gradle/
+android/build/
+android/app/build/
+local.properties
+*.apk
+*.aab
+*.idsig
+
+# IDEs & OS
+.idea/
+*.iml
+.vscode/
+.DS_Store
+Thumbs.db
+__pycache__/
+*.py[cod]
+*$py.class
+
