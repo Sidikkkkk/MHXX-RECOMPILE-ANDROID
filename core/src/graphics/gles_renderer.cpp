@@ -2,6 +2,7 @@
 #include <GLES3/gl32.h>
 #include <android/log.h>
 #include <vector>
+#include <memory>
 
 #define LOG_TAG "MHXX_GLES"
 #define LOGI(...) __android_log_print(ANDROID_LOG_INFO, LOG_TAG, __VA_ARGS__)

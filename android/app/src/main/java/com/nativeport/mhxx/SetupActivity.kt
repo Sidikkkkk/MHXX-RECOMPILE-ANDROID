@@ -135,3 +135,4 @@ class SetupActivity : AppCompatActivity() {
         return uri.path?.substringAfterLast('/') ?: uri.toString()
     }
 }
+

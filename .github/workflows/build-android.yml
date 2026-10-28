@@ -22,19 +22,22 @@ jobs:
         java-version: '17'
         distribution: 'temurin'
 
-    - name: Set up Android NDK & CMake
-      uses: nttld/setup-ndk@v1
-      with:
-        ndk-version: r26b
-        cmake-version: 3.22.1
+    - name: Ensure Android NDK & CMake
+      run: |
+        echo "Menyiapkan NDK dan CMake..."
+        $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --install "ndk;26.1.10909125" "cmake;3.22.1"
+        echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/26.1.10909125" >> $GITHUB_ENV
+        echo "ANDROID_NDK_ROOT=$ANDROID_HOME/ndk/26.1.10909125" >> $GITHUB_ENV
 
-    - name: Set up Gradle
+    - name: Set up Gradle 8.2
       uses: gradle/actions/setup-gradle@v3
+      with:
+        gradle-version: '8.2'
 
     - name: Build Debug APK
       working-directory: android
       run: |
-        gradle assembleDebug --stacktrace
+        gradle assembleDebug --stacktrace --info
 
     - name: Upload APK Artifact
       uses: actions/upload-artifact@v4
