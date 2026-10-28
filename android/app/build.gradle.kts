@@ -6,6 +6,7 @@ plugins {
 android {
     namespace = "com.nativeport.mhxx"
     compileSdk = 34
+    ndkVersion = "26.1.10909125"
 
     defaultConfig {
         applicationId = "com.nativeport.mhxx"
