@@ -150,6 +150,35 @@ public final class NativeLibrary {
         return getMainContext();
     }
 
+    public static String getUserPath() {
+        try {
+            String p = org.citra.emu.utils.CitraDirectory.getUserDirectory();
+            return p != null ? p : "";
+        } catch (Exception e) {
+            return "";
+        }
+    }
+
+    public static String getStoragePath() {
+        return getUserPath();
+    }
+
+    public static String getDirectory() {
+        return getUserPath();
+    }
+
+    public static String getPackageName() {
+        Context ctx = getMainContext();
+        if (ctx != null) {
+            try {
+                return ctx.getPackageName();
+            } catch (Exception e) {
+                // ignore
+            }
+        }
+        return "com.antutu.ABenchMark";
+    }
+
     public static AssetManager getAssetManager() {
         Context context = getMainContext();
         if (context == null) {
