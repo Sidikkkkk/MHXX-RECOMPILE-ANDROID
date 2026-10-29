@@ -3,109 +3,86 @@
     android:id="@+id/main_container"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="#0A0A0C">
+    android:background="@android:color/transparent">
 
-    <!-- OpenGL ES 3.2 Game Surface -->
+    <!-- OpenGL ES 3.2 Citra Core Game Surface -->
     <SurfaceView
         android:id="@+id/game_surface"
         android:layout_width="match_parent"
         android:layout_height="match_parent" />
 
-    <!-- Top Status HUD (FPS & Controls) -->
-    <LinearLayout
+    <!-- Unified High-Performance Touch Controller Overlay (Circle Pad, C-Stick, DPad, ABXY, L/R, ZL/ZR, Start/Select) -->
+    <com.nativeport.mhxx.overlay.OverlayView
+        android:id="@+id/controller_overlay"
         android:layout_width="match_parent"
+        android:layout_height="match_parent" />
+
+    <!-- Top Minimal HUD Bar -->
+    <LinearLayout
+        android:id="@+id/hud_bar"
+        android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:orientation="horizontal"
-        android:padding="8dp"
-        android:gravity="center_vertical">
+        android:layout_gravity="top|center_horizontal"
+        android:padding="6dp"
+        android:layout_marginTop="2dp">
 
         <TextView
             android:id="@+id/tv_fps_info"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="MHXX RECOMP • 60 FPS • Adreno 610"
+            android:text="MHXX RECOMP • Adreno 610"
             android:textColor="#C4841D"
-            android:textSize="11sp"
+            android:textSize="10sp"
             android:textStyle="bold"
-            android:background="#88000000"
+            android:background="#77000000"
             android:paddingStart="8dp"
             android:paddingEnd="8dp"
             android:paddingTop="3dp"
             android:paddingBottom="3dp" />
 
-        <!-- Tombol Toggle Log Console -->
         <TextView
             android:id="@+id/btn_toggle_log"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="[ LOG: ON ]"
-            android:textColor="#4CAF50"
-            android:textSize="11sp"
+            android:text="[ LOG: OFF ]"
+            android:textColor="#888888"
+            android:textSize="10sp"
             android:textStyle="bold"
-            android:background="#88000000"
+            android:background="#77000000"
             android:paddingStart="8dp"
             android:paddingEnd="8dp"
             android:paddingTop="3dp"
             android:paddingBottom="3dp"
             android:layout_marginStart="8dp" />
 
-        <!-- Tombol Setup ROM Ulang -->
         <TextView
             android:id="@+id/btn_reset_rom"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="[ GANTI ROM ]"
+            android:text="[ ROM ]"
             android:textColor="#FF9800"
-            android:textSize="11sp"
+            android:textSize="10sp"
             android:textStyle="bold"
-            android:background="#88000000"
+            android:background="#77000000"
             android:paddingStart="8dp"
             android:paddingEnd="8dp"
             android:paddingTop="3dp"
             android:paddingBottom="3dp"
             android:layout_marginStart="8dp" />
-
-        <View
-            android:layout_width="0dp"
-            android:layout_height="0dp"
-            android:layout_weight="1" />
-
-        <!-- Shoulder L & R Buttons -->
-        <TextView
-            android:id="@+id/btn_l"
-            android:layout_width="64dp"
-            android:layout_height="36dp"
-            android:text="L"
-            android:textColor="#FFFFFF"
-            android:textSize="16sp"
-            android:textStyle="bold"
-            android:gravity="center"
-            android:background="@drawable/btn_shoulder_bg"
-            android:layout_marginEnd="16dp" />
-
-        <TextView
-            android:id="@+id/btn_r"
-            android:layout_width="64dp"
-            android:layout_height="36dp"
-            android:text="R"
-            android:textColor="#FFFFFF"
-            android:textSize="16sp"
-            android:textStyle="bold"
-            android:gravity="center"
-            android:background="@drawable/btn_shoulder_bg"
-            android:layout_marginEnd="8dp" />
     </LinearLayout>
 
-    <!-- On-Screen Live Log Terminal (Transparan di tengah atas) -->
+    <!-- On-Screen Live Log Terminal (Hidden by default, semi-transparent) -->
     <ScrollView
         android:id="@+id/scroll_log"
         android:layout_width="match_parent"
-        android:layout_height="140dp"
-        android:layout_marginTop="46dp"
-        android:layout_marginStart="16dp"
-        android:layout_marginEnd="16dp"
-        android:background="#99000000"
-        android:padding="8dp">
+        android:layout_height="120dp"
+        android:layout_marginTop="38dp"
+        android:layout_marginStart="24dp"
+        android:layout_marginEnd="24dp"
+        android:background="#88000000"
+        android:padding="6dp"
+        android:visibility="gone">
 
         <TextView
             android:id="@+id/tv_onscreen_log"
@@ -114,152 +91,6 @@
             android:fontFamily="monospace"
             android:textColor="#00FF66"
             android:textSize="10sp"
-            android:text="[RECOMP] Memulai Engine Monster Hunter XX Static Recompiler...\n" />
+            android:text="[RECOMP] Citra Engine Live Logcat Active\n" />
     </ScrollView>
-
-    <!-- Bottom Left: D-Pad / Movement Controls -->
-    <RelativeLayout
-        android:layout_width="140dp"
-        android:layout_height="140dp"
-        android:layout_gravity="bottom|start"
-        android:layout_marginStart="20dp"
-        android:layout_marginBottom="20dp">
-
-        <TextView
-            android:id="@+id/btn_up"
-            android:layout_width="44dp"
-            android:layout_height="44dp"
-            android:layout_centerHorizontal="true"
-            android:layout_alignParentTop="true"
-            android:text="▲"
-            android:textColor="#FFFFFF"
-            android:gravity="center"
-            android:background="@drawable/btn_controller_bg" />
-
-        <TextView
-            android:id="@+id/btn_down"
-            android:layout_width="44dp"
-            android:layout_height="44dp"
-            android:layout_centerHorizontal="true"
-            android:layout_alignParentBottom="true"
-            android:text="▼"
-            android:textColor="#FFFFFF"
-            android:gravity="center"
-            android:background="@drawable/btn_controller_bg" />
-
-        <TextView
-            android:id="@+id/btn_left"
-            android:layout_width="44dp"
-            android:layout_height="44dp"
-            android:layout_centerVertical="true"
-            android:layout_alignParentStart="true"
-            android:text="◀"
-            android:textColor="#FFFFFF"
-            android:gravity="center"
-            android:background="@drawable/btn_controller_bg" />
-
-        <TextView
-            android:id="@+id/btn_right"
-            android:layout_width="44dp"
-            android:layout_height="44dp"
-            android:layout_centerVertical="true"
-            android:layout_alignParentEnd="true"
-            android:text="▶"
-            android:textColor="#FFFFFF"
-            android:gravity="center"
-            android:background="@drawable/btn_controller_bg" />
-    </RelativeLayout>
-
-    <!-- Bottom Right: Action Buttons (X, Y, A, B) Diamond Layout -->
-    <RelativeLayout
-        android:layout_width="150dp"
-        android:layout_height="150dp"
-        android:layout_gravity="bottom|end"
-        android:layout_marginEnd="20dp"
-        android:layout_marginBottom="16dp">
-
-        <TextView
-            android:id="@+id/btn_x"
-            android:layout_width="44dp"
-            android:layout_height="44dp"
-            android:layout_centerHorizontal="true"
-            android:layout_alignParentTop="true"
-            android:text="X"
-            android:textColor="#42A5F5"
-            android:textSize="16sp"
-            android:textStyle="bold"
-            android:gravity="center"
-            android:background="@drawable/btn_controller_bg" />
-
-        <TextView
-            android:id="@+id/btn_b"
-            android:layout_width="44dp"
-            android:layout_height="44dp"
-            android:layout_centerHorizontal="true"
-            android:layout_alignParentBottom="true"
-            android:text="B"
-            android:textColor="#FFCA28"
-            android:textSize="16sp"
-            android:textStyle="bold"
-            android:gravity="center"
-            android:background="@drawable/btn_controller_bg" />
-
-        <TextView
-            android:id="@+id/btn_y"
-            android:layout_width="44dp"
-            android:layout_height="44dp"
-            android:layout_centerVertical="true"
-            android:layout_alignParentStart="true"
-            android:text="Y"
-            android:textColor="#66BB6A"
-            android:textSize="16sp"
-            android:textStyle="bold"
-            android:gravity="center"
-            android:background="@drawable/btn_controller_bg" />
-
-        <TextView
-            android:id="@+id/btn_a"
-            android:layout_width="44dp"
-            android:layout_height="44dp"
-            android:layout_centerVertical="true"
-            android:layout_alignParentEnd="true"
-            android:text="A"
-            android:textColor="#EF5350"
-            android:textSize="16sp"
-            android:textStyle="bold"
-            android:gravity="center"
-            android:background="@drawable/btn_controller_bg" />
-    </RelativeLayout>
-
-    <!-- Center Bottom: Start & Select -->
-    <LinearLayout
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:layout_gravity="bottom|center_horizontal"
-        android:layout_marginBottom="12dp"
-        android:orientation="horizontal">
-
-        <TextView
-            android:id="@+id/btn_select"
-            android:layout_width="60dp"
-            android:layout_height="28dp"
-            android:text="SELECT"
-            android:textColor="#AAAAAA"
-            android:textSize="10sp"
-            android:gravity="center"
-            android:background="@drawable/btn_shoulder_bg"
-            android:layout_marginEnd="16dp" />
-
-        <TextView
-            android:id="@+id/btn_start"
-            android:layout_width="60dp"
-            android:layout_height="28dp"
-            android:text="START"
-            android:textColor="#E0A938"
-            android:textSize="10sp"
-            android:textStyle="bold"
-            android:gravity="center"
-            android:background="@drawable/btn_shoulder_bg" />
-    </LinearLayout>
-
 </FrameLayout>

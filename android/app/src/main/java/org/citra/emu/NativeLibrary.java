@@ -411,6 +411,7 @@ public final class NativeLibrary {
     public static native void SurfaceChanged(Surface surface);
     public static native void SurfaceDestroyed();
     public static native void WindowChanged();
+    public static native void doFrame();
     public static native void DoFrame();
     public static native void Run(String path);
     public static native void ResumeEmulation();

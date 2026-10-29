@@ -31,7 +31,7 @@
         <!-- Game Engine View -->
         <activity
             android:name=".MainActivity"
-            android:configChanges="orientation|screenSize|keyboardHidden"
+            android:configChanges="orientation|screenSize|keyboardHidden|keyboard|navigation"
             android:screenOrientation="sensorLandscape"
             android:exported="false" />
 

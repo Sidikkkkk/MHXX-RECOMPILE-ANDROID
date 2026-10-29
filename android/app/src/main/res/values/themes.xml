@@ -2,6 +2,6 @@
     <style name="Theme.MHXXNative" parent="Theme.AppCompat.NoActionBar">
         <item name="android:windowFullscreen">true</item>
         <item name="android:windowContentOverlay">@null</item>
+        <item name="android:windowBackground">@android:color/transparent</item>
     </style>
 </resources>
-

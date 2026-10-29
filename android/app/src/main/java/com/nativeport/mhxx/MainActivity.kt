@@ -7,6 +7,8 @@ import android.graphics.Color
 import android.os.Bundle
 import android.text.InputFilter
 import android.util.Log
+import android.view.InputDevice
+import android.view.KeyEvent
 import android.view.MotionEvent
 import android.view.SurfaceHolder
 import android.view.SurfaceView
@@ -19,6 +21,7 @@ import android.widget.TextView
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
+import com.nativeport.mhxx.overlay.OverlayView
 import org.citra.emu.NativeLibrary
 import org.citra.emu.NativeLibrary.ButtonType
 import org.citra.emu.ui.EmulationActivity
@@ -30,6 +33,7 @@ import java.io.InputStreamReader
 class MainActivity : EmulationActivity() {
 
     private lateinit var gameSurface: SurfaceView
+    private lateinit var controllerOverlay: OverlayView
     private lateinit var tvLog: TextView
     private lateinit var scrollLog: ScrollView
     private lateinit var btnToggleLog: TextView
@@ -50,6 +54,8 @@ class MainActivity : EmulationActivity() {
         EmulationActivity.setInstance(this)
 
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        window.setBackgroundDrawableResource(android.R.color.transparent)
+
         setContentView(R.layout.activity_main)
         enableImmersiveMode()
 
@@ -83,6 +89,10 @@ class MainActivity : EmulationActivity() {
         btnToggleLog = findViewById(R.id.btn_toggle_log)
         tvFpsInfo = findViewById(R.id.tv_fps_info)
         gameSurface = findViewById(R.id.game_surface)
+        controllerOverlay = findViewById(R.id.controller_overlay)
+
+        // SurfaceView z-ordering: media overlay false agar tidak menutupi window
+        gameSurface.setZOrderMediaOverlay(false)
 
         btnToggleLog.setOnClickListener {
             if (scrollLog.visibility == View.VISIBLE) {
@@ -105,7 +115,7 @@ class MainActivity : EmulationActivity() {
         }
 
         appendLog("[SYSTEM] MHXX Native Engine aktif (Adreno 610 / GLES 3.2)")
-        appendLog("[SYSTEM] Logging real-time aktif -> file: citra_log.txt")
+        appendLog("[SYSTEM] Citra MMJ Full Touch Controls & Logcat aktif")
 
         // 2. Mulai Background Logcat Streamer untuk menampilkan log Citra langsung
         startLogcatCapture()
@@ -134,32 +144,6 @@ class MainActivity : EmulationActivity() {
                 NativeLibrary.SurfaceDestroyed()
             }
         })
-
-        // 4. Forward touch events pada SurfaceView (Bottom Screen Touch)
-        gameSurface.setOnTouchListener { _, event ->
-            val action = when (event.actionMasked) {
-                MotionEvent.ACTION_DOWN -> NativeLibrary.TouchEvent.TOUCH_PRESSED
-                MotionEvent.ACTION_MOVE -> NativeLibrary.TouchEvent.TOUCH_MOVED
-                MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> NativeLibrary.TouchEvent.TOUCH_RELEASED
-                else -> return@setOnTouchListener false
-            }
-            NativeLibrary.TouchEvent(action, event.x.toInt(), event.y.toInt())
-            true
-        }
-
-        // 5. Setup On-Screen Controller Buttons
-        bindButton(findViewById(R.id.btn_a), ButtonType.N3DS_BUTTON_A)
-        bindButton(findViewById(R.id.btn_b), ButtonType.N3DS_BUTTON_B)
-        bindButton(findViewById(R.id.btn_x), ButtonType.N3DS_BUTTON_X)
-        bindButton(findViewById(R.id.btn_y), ButtonType.N3DS_BUTTON_Y)
-        bindButton(findViewById(R.id.btn_up), ButtonType.N3DS_DPAD_UP)
-        bindButton(findViewById(R.id.btn_down), ButtonType.N3DS_DPAD_DOWN)
-        bindButton(findViewById(R.id.btn_left), ButtonType.N3DS_DPAD_LEFT)
-        bindButton(findViewById(R.id.btn_right), ButtonType.N3DS_DPAD_RIGHT)
-        bindButton(findViewById(R.id.btn_l), ButtonType.N3DS_BUTTON_L)
-        bindButton(findViewById(R.id.btn_r), ButtonType.N3DS_BUTTON_R)
-        bindButton(findViewById(R.id.btn_start), ButtonType.N3DS_BUTTON_START)
-        bindButton(findViewById(R.id.btn_select), ButtonType.N3DS_BUTTON_SELECT)
     }
 
     private fun maybeStartEmulation() {
@@ -198,6 +182,9 @@ class MainActivity : EmulationActivity() {
         if (!isEmulating) return
         isEmulating = false
         try {
+            if (::controllerOverlay.isInitialized) {
+                controllerOverlay.releaseAll()
+            }
             NativeLibrary.StopEmulation()
             NativeLibrary.SurfaceDestroyed()
         } catch (e: Exception) {
@@ -205,23 +192,47 @@ class MainActivity : EmulationActivity() {
         }
     }
 
-    @SuppressLint("ClickableViewAccessibility")
-    private fun bindButton(view: View?, buttonType: Int) {
-        view?.setOnTouchListener { v, event ->
-            when (event.actionMasked) {
-                MotionEvent.ACTION_DOWN -> {
-                    NativeLibrary.InputEvent(buttonType, 1.0f)
-                    v.isPressed = true
-                    true
-                }
-                MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
-                    NativeLibrary.InputEvent(buttonType, 0.0f)
-                    v.isPressed = false
-                    true
-                }
-                else -> false
-            }
+    // Dukungan Physical Gamepad (Bluetooth / USB / Android Joystick)
+    override fun dispatchKeyEvent(event: KeyEvent): Boolean {
+        val button = when (event.keyCode) {
+            KeyEvent.KEYCODE_BUTTON_A -> ButtonType.N3DS_BUTTON_A
+            KeyEvent.KEYCODE_BUTTON_B -> ButtonType.N3DS_BUTTON_B
+            KeyEvent.KEYCODE_BUTTON_X -> ButtonType.N3DS_BUTTON_X
+            KeyEvent.KEYCODE_BUTTON_Y -> ButtonType.N3DS_BUTTON_Y
+            KeyEvent.KEYCODE_BUTTON_L1 -> ButtonType.N3DS_BUTTON_L
+            KeyEvent.KEYCODE_BUTTON_R1 -> ButtonType.N3DS_BUTTON_R
+            KeyEvent.KEYCODE_BUTTON_L2 -> ButtonType.N3DS_BUTTON_ZL
+            KeyEvent.KEYCODE_BUTTON_R2 -> ButtonType.N3DS_BUTTON_ZR
+            KeyEvent.KEYCODE_BUTTON_START -> ButtonType.N3DS_BUTTON_START
+            KeyEvent.KEYCODE_BUTTON_SELECT -> ButtonType.N3DS_BUTTON_SELECT
+            KeyEvent.KEYCODE_DPAD_UP -> ButtonType.N3DS_DPAD_UP
+            KeyEvent.KEYCODE_DPAD_DOWN -> ButtonType.N3DS_DPAD_DOWN
+            KeyEvent.KEYCODE_DPAD_LEFT -> ButtonType.N3DS_DPAD_LEFT
+            KeyEvent.KEYCODE_DPAD_RIGHT -> ButtonType.N3DS_DPAD_RIGHT
+            else -> -1
         }
+        if (button != -1) {
+            val value = if (event.action == KeyEvent.ACTION_DOWN) 1.0f else 0.0f
+            NativeLibrary.InputEvent(button, value)
+            return true
+        }
+        return super.dispatchKeyEvent(event)
+    }
+
+    override fun dispatchGenericMotionEvent(event: MotionEvent): Boolean {
+        if (event.source and InputDevice.SOURCE_JOYSTICK == InputDevice.SOURCE_JOYSTICK &&
+            event.action == MotionEvent.ACTION_MOVE) {
+            val x = event.getAxisValue(MotionEvent.AXIS_X)
+            val y = event.getAxisValue(MotionEvent.AXIS_Y)
+            NativeLibrary.InputEvent(ButtonType.N3DS_CPAD_X, x)
+            NativeLibrary.InputEvent(ButtonType.N3DS_CPAD_Y, -y)
+            val zx = event.getAxisValue(MotionEvent.AXIS_Z)
+            val rz = event.getAxisValue(MotionEvent.AXIS_RZ)
+            NativeLibrary.InputEvent(ButtonType.N3DS_STICK_X, zx)
+            NativeLibrary.InputEvent(ButtonType.N3DS_STICK_Y, -rz)
+            return true
+        }
+        return super.dispatchGenericMotionEvent(event)
     }
 
     /**
@@ -269,35 +280,53 @@ class MainActivity : EmulationActivity() {
                     .setPositiveButton(button0 ?: "OK") { _, _ ->
                         val text = inputView.text.toString().trim().ifEmpty { "Hunter" }
                         appendLog("[SWKBD] Nama disimpan: '$text'")
-                        Thread {
-                            NativeLibrary.KeyboardEvent(0, text)
-                        }.start()
+                        NativeLibrary.KeyboardEvent(0, text)
+                        enableImmersiveMode()
+                        try {
+                            NativeLibrary.WindowChanged()
+                            NativeLibrary.ResumeEmulation()
+                        } catch (ignored: Exception) {}
                     }
 
                 if (!button1.isNullOrEmpty()) {
                     dialog.setNegativeButton(button1) { _, _ ->
                         appendLog("[SWKBD] Batal dipilih")
-                        Thread {
-                            NativeLibrary.KeyboardEvent(1, "")
-                        }.start()
+                        NativeLibrary.KeyboardEvent(1, "")
+                        enableImmersiveMode()
+                        try {
+                            NativeLibrary.WindowChanged()
+                            NativeLibrary.ResumeEmulation()
+                        } catch (ignored: Exception) {}
                     }
                 }
 
                 if (!button2.isNullOrEmpty()) {
                     dialog.setNeutralButton(button2) { _, _ ->
                         appendLog("[SWKBD] Tombol opsi 2 dipilih")
-                        Thread {
-                            NativeLibrary.KeyboardEvent(2, "")
-                        }.start()
+                        NativeLibrary.KeyboardEvent(2, "")
+                        enableImmersiveMode()
+                        try {
+                            NativeLibrary.WindowChanged()
+                            NativeLibrary.ResumeEmulation()
+                        } catch (ignored: Exception) {}
                     }
+                }
+
+                dialog.setOnDismissListener {
+                    enableImmersiveMode()
+                    try {
+                        NativeLibrary.WindowChanged()
+                        NativeLibrary.ResumeEmulation()
+                    } catch (ignored: Exception) {}
                 }
 
                 dialog.show()
             } catch (e: Exception) {
                 appendLog("[SWKBD] Gagal menampilkan dialog: ${e.message}, fallback: 'Hunter'")
-                Thread {
-                    NativeLibrary.KeyboardEvent(0, "Hunter")
-                }.start()
+                NativeLibrary.KeyboardEvent(0, "Hunter")
+                try {
+                    NativeLibrary.ResumeEmulation()
+                } catch (ignored: Exception) {}
             }
         }
     }
@@ -314,6 +343,18 @@ class MainActivity : EmulationActivity() {
                     .setCancelable(cancel)
                     .setItems(miis) { _, which ->
                         appendLog("[MII] Mii dipilih: index $which")
+                        enableImmersiveMode()
+                        try {
+                            NativeLibrary.WindowChanged()
+                            NativeLibrary.ResumeEmulation()
+                        } catch (ignored: Exception) {}
+                    }
+                    .setOnDismissListener {
+                        enableImmersiveMode()
+                        try {
+                            NativeLibrary.WindowChanged()
+                            NativeLibrary.ResumeEmulation()
+                        } catch (ignored: Exception) {}
                     }
                     .show()
             } catch (e: Exception) {
@@ -324,6 +365,7 @@ class MainActivity : EmulationActivity() {
 
     /**
      * Streaming logcat internal Citra C++ ke layar dan file citra_log.txt
+     * Menggunakan filter --pid untuk membaca semua log tanpa diblokir SELinux Android 11
      */
     private fun startLogcatCapture() {
         logcatThread = Thread({
@@ -333,11 +375,8 @@ class MainActivity : EmulationActivity() {
                 val logFile = File(getExternalFilesDir(null), "citra_log.txt")
                 fileWriter = logFile.bufferedWriter()
 
-                try {
-                    Runtime.getRuntime().exec("logcat -c").waitFor()
-                } catch (e: Exception) {}
-
-                process = Runtime.getRuntime().exec(arrayOf("logcat", "-v", "time", "citra:V", "AndroidRuntime:E", "DEBUG:F", "*:S"))
+                val myPid = android.os.Process.myPid()
+                process = Runtime.getRuntime().exec(arrayOf("logcat", "-v", "time", "--pid=$myPid"))
                 val reader = BufferedReader(InputStreamReader(process.inputStream))
                 var line: String? = null
 
@@ -347,18 +386,20 @@ class MainActivity : EmulationActivity() {
                     fileWriter.newLine()
                     fileWriter.flush()
 
-                    val clean = if (l.length > 110) l.substring(0, 110) + "..." else l
-                    runOnUiThread {
-                        if (::tvLog.isInitialized && scrollLog.visibility == View.VISIBLE) {
-                            tvLog.append("$clean\n")
-                            if (tvLog.lineCount > 250) {
-                                val cur = tvLog.text
-                                val idx = cur.indexOf('\n', 800)
-                                if (idx != -1) {
-                                    tvLog.text = cur.substring(idx + 1)
+                    if (::tvLog.isInitialized && ::scrollLog.isInitialized && scrollLog.visibility == View.VISIBLE) {
+                        val clean = if (l.length > 110) l.substring(0, 110) + "..." else l
+                        runOnUiThread {
+                            if (scrollLog.visibility == View.VISIBLE) {
+                                tvLog.append("$clean\n")
+                                if (tvLog.lineCount > 250) {
+                                    val cur = tvLog.text
+                                    val idx = cur.indexOf('\n', 800)
+                                    if (idx != -1) {
+                                        tvLog.text = cur.substring(idx + 1)
+                                    }
                                 }
+                                scrollLog.post { scrollLog.fullScroll(View.FOCUS_DOWN) }
                             }
-                            scrollLog.post { scrollLog.fullScroll(View.FOCUS_DOWN) }
                         }
                     }
                 }
@@ -376,9 +417,11 @@ class MainActivity : EmulationActivity() {
 
     private fun appendLog(msg: String) {
         runOnUiThread {
-            if (::tvLog.isInitialized) {
+            if (::tvLog.isInitialized && ::scrollLog.isInitialized) {
                 tvLog.append("$msg\n")
-                scrollLog.post { scrollLog.fullScroll(View.FOCUS_DOWN) }
+                if (scrollLog.visibility == View.VISIBLE) {
+                    scrollLog.post { scrollLog.fullScroll(View.FOCUS_DOWN) }
+                }
             }
         }
     }
@@ -402,11 +445,23 @@ class MainActivity : EmulationActivity() {
         }
     }
 
+    override fun onWindowFocusChanged(hasFocus: Boolean) {
+        super.onWindowFocusChanged(hasFocus)
+        if (hasFocus) {
+            enableImmersiveMode()
+            try {
+                NativeLibrary.WindowChanged()
+                NativeLibrary.ResumeEmulation()
+            } catch (e: Exception) {}
+        }
+    }
+
     override fun onResume() {
         super.onResume()
         EmulationActivity.setInstance(this)
         enableImmersiveMode()
         try {
+            NativeLibrary.WindowChanged()
             NativeLibrary.ResumeEmulation()
         } catch (e: Exception) {
             // ignore
@@ -415,6 +470,9 @@ class MainActivity : EmulationActivity() {
 
     override fun onPause() {
         super.onPause()
+        if (::controllerOverlay.isInitialized) {
+            controllerOverlay.releaseAll()
+        }
         try {
             NativeLibrary.PauseEmulation()
         } catch (e: Exception) {
