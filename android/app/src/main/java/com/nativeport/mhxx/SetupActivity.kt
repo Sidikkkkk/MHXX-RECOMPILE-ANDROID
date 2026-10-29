@@ -186,7 +186,7 @@ class SetupActivity : CitraMainActivity() {
             val controller = WindowCompat.getInsetsController(window, window.decorView)
             controller?.hide(WindowInsetsCompat.Type.systemBars())
             controller?.systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
-        } catch (_: Exception) {
+        } catch (e: Exception) {
             @Suppress("DEPRECATION")
             window.decorView.systemUiVisibility = (
                 View.SYSTEM_UI_FLAG_LAYOUT_STABLE
@@ -208,7 +208,7 @@ class SetupActivity : CitraMainActivity() {
                     name = cursor.getString(nameIndex)
                 }
             }
-        } catch (_: Exception) {
+        } catch (e: Exception) {
             name = uri.lastPathSegment ?: "ROM_File.3ds"
         }
         return name
