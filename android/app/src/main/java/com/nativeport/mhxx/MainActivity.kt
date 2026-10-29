@@ -2,43 +2,33 @@ package com.nativeport.mhxx
 
 import android.annotation.SuppressLint
 import android.content.Intent
-import android.opengl.GLSurfaceView
 import android.os.Bundle
 import android.view.MotionEvent
+import android.view.SurfaceHolder
+import android.view.SurfaceView
 import android.view.View
 import android.view.WindowManager
 import android.widget.ScrollView
 import android.widget.TextView
-import androidx.appcompat.app.AppCompatActivity
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
-import com.nativeport.mhxx.bridge.NativeBridge
+import org.citra.emu.NativeLibrary
+import org.citra.emu.NativeLibrary.ButtonType
+import org.citra.emu.ui.EmulationActivity
+import org.citra.emu.utils.CitraDirectory
 import java.io.File
-import javax.microedition.khronos.egl.EGLConfig
-import javax.microedition.khronos.opengles.GL10
 
-class MainActivity : AppCompatActivity() {
+class MainActivity : EmulationActivity() {
 
-    private lateinit var glView: GLSurfaceView
+    private lateinit var gameSurface: SurfaceView
     private lateinit var tvLog: TextView
     private lateinit var scrollLog: ScrollView
     private lateinit var btnToggleLog: TextView
+    private lateinit var tvFpsInfo: TextView
 
-    companion object {
-        const val KEY_A      = 1 shl 0
-        const val KEY_B      = 1 shl 1
-        const val KEY_SELECT = 1 shl 2
-        const val KEY_START  = 1 shl 3
-        const val KEY_RIGHT  = 1 shl 4
-        const val KEY_LEFT   = 1 shl 5
-        const val KEY_UP     = 1 shl 6
-        const val KEY_DOWN   = 1 shl 7
-        const val KEY_R      = 1 shl 8
-        const val KEY_L      = 1 shl 9
-        const val KEY_X      = 1 shl 10
-        const val KEY_Y      = 1 shl 11
-    }
+    private var emulationThread: Thread? = null
+    private var isEmulating = false
 
     @SuppressLint("ClickableViewAccessibility")
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -48,16 +38,14 @@ class MainActivity : AppCompatActivity() {
         setContentView(R.layout.activity_main)
         enableImmersiveMode()
 
+        // 1. Inisialisasi Storage & Config
+        CitraDirectory.start(this)
+
         tvLog = findViewById(R.id.tv_onscreen_log)
         scrollLog = findViewById(R.id.scroll_log)
         btnToggleLog = findViewById(R.id.btn_toggle_log)
-
-        // Setup On-Screen Log Listener
-        NativeBridge.logCallback = { message ->
-            runOnUiThread {
-                appendLog(message)
-            }
-        }
+        tvFpsInfo = findViewById(R.id.tv_fps_info)
+        gameSurface = findViewById(R.id.game_surface)
 
         btnToggleLog.setOnClickListener {
             if (scrollLog.visibility == View.VISIBLE) {
@@ -71,91 +59,107 @@ class MainActivity : AppCompatActivity() {
             }
         }
 
-        val btnResetRom = findViewById<TextView?>(R.id.btn_reset_rom)
-        btnResetRom?.setOnClickListener {
+        findViewById<TextView>(R.id.btn_reset_rom)?.setOnClickListener {
             val romfsFlag = File(getExternalFilesDir(null), "romfs/installed.flag")
             if (romfsFlag.exists()) romfsFlag.delete()
-            val intent = Intent(this, SetupActivity::class.java)
-            startActivity(intent)
+            stopEmulation()
+            startActivity(Intent(this, SetupActivity::class.java))
             finish()
         }
 
-        val romfsDir = File(getExternalFilesDir(null), "romfs").absolutePath
-        val saveDir = File(filesDir, "savedata").absolutePath
-
-        appendLog("[INIT] Memeriksa direktori game: $romfsDir")
-        val gameFile = File(romfsDir, "game.bin")
-        if (gameFile.exists()) {
-            val sizeMb = gameFile.length() / (1024 * 1024)
-            appendLog("[FS] Ditemukan game.bin ($sizeMb MB). Memulai mounting...")
-        } else {
-            appendLog("[WARN] game.bin tidak ditemukan! Silakan setup ulang dari menu awal.")
-        }
-
-        // Inisialisasi engine
-        NativeBridge.initNativeEngine(romfsDir, saveDir)
-
-        // Setup OpenGL ES 3.2 View
-        glView = findViewById(R.id.gl_surface)
-        glView.setEGLContextClientVersion(3)
-        glView.setRenderer(object : GLSurfaceView.Renderer {
-            override fun onSurfaceCreated(gl: GL10?, config: EGLConfig?) {
-                NativeBridge.onSurfaceCreated(glView.width, glView.height)
+        // 2. Setup Surface Callback
+        gameSurface.holder.addCallback(object : SurfaceHolder.Callback {
+            override fun surfaceCreated(holder: SurfaceHolder) {
+                appendLog("[GLES] Surface diciptakan, menghubungkan EGL...")
+                NativeLibrary.SurfaceChanged(holder.surface)
             }
 
-            override fun onSurfaceChanged(gl: GL10?, w: Int, h: Int) {
-                NativeBridge.onSurfaceChanged(w, h)
+            override fun surfaceChanged(holder: SurfaceHolder, format: Int, width: Int, height: Int) {
+                appendLog("[GLES] Resolusi layar: ${width}x${height}")
+                NativeLibrary.SurfaceChanged(holder.surface)
             }
 
-            override fun onDrawFrame(gl: GL10?) {
-                NativeBridge.runFrame()
+            override fun surfaceDestroyed(holder: SurfaceHolder) {
+                appendLog("[GLES] Surface dihancurkan.")
+                NativeLibrary.SurfaceDestroyed()
             }
         })
-        glView.renderMode = GLSurfaceView.RENDERMODE_CONTINUOUSLY
 
-        glView.setOnTouchListener { _, event ->
-            val w = if (glView.width > 0) glView.width.toFloat() else 1f
-            val h = if (glView.height > 0) glView.height.toFloat() else 1f
-            val normX = event.x / w
-            val normY = event.y / h
-            val isDown = event.action == MotionEvent.ACTION_DOWN || event.action == MotionEvent.ACTION_MOVE
-            NativeBridge.sendTouchInput(normX, normY, isDown)
+        // 3. Forward touch events pada SurfaceView (Bottom Screen Touch)
+        gameSurface.setOnTouchListener { _, event ->
+            val action = when (event.actionMasked) {
+                MotionEvent.ACTION_DOWN -> NativeLibrary.TouchEvent.TOUCH_PRESSED
+                MotionEvent.ACTION_MOVE -> NativeLibrary.TouchEvent.TOUCH_MOVED
+                MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> NativeLibrary.TouchEvent.TOUCH_RELEASED
+                else -> return@setOnTouchListener false
+            }
+            NativeLibrary.TouchEvent(action, event.x.toInt(), event.y.toInt())
             true
         }
 
-        // Setup Virtual Controller Button Listeners
-        bindControllerButton(R.id.btn_a, KEY_A)
-        bindControllerButton(R.id.btn_b, KEY_B)
-        bindControllerButton(R.id.btn_x, KEY_X)
-        bindControllerButton(R.id.btn_y, KEY_Y)
-        bindControllerButton(R.id.btn_l, KEY_L)
-        bindControllerButton(R.id.btn_r, KEY_R)
-        bindControllerButton(R.id.btn_up, KEY_UP)
-        bindControllerButton(R.id.btn_down, KEY_DOWN)
-        bindControllerButton(R.id.btn_left, KEY_LEFT)
-        bindControllerButton(R.id.btn_right, KEY_RIGHT)
-        bindControllerButton(R.id.btn_start, KEY_START)
-        bindControllerButton(R.id.btn_select, KEY_SELECT)
+        // 4. Setup On-Screen Controller Buttons
+        bindButton(findViewById(R.id.btn_a), ButtonType.N3DS_BUTTON_A)
+        bindButton(findViewById(R.id.btn_b), ButtonType.N3DS_BUTTON_B)
+        bindButton(findViewById(R.id.btn_x), ButtonType.N3DS_BUTTON_X)
+        bindButton(findViewById(R.id.btn_y), ButtonType.N3DS_BUTTON_Y)
+        bindButton(findViewById(R.id.btn_up), ButtonType.N3DS_DPAD_UP)
+        bindButton(findViewById(R.id.btn_down), ButtonType.N3DS_DPAD_DOWN)
+        bindButton(findViewById(R.id.btn_left), ButtonType.N3DS_DPAD_LEFT)
+        bindButton(findViewById(R.id.btn_right), ButtonType.N3DS_DPAD_RIGHT)
+        bindButton(findViewById(R.id.btn_l), ButtonType.N3DS_BUTTON_L)
+        bindButton(findViewById(R.id.btn_r), ButtonType.N3DS_BUTTON_R)
+        bindButton(findViewById(R.id.btn_start), ButtonType.N3DS_BUTTON_START)
+        bindButton(findViewById(R.id.btn_select), ButtonType.N3DS_BUTTON_SELECT)
+
+        // 5. Jalankan Game
+        val gamePath = intent.getStringExtra("game_path")
+            ?: File(getExternalFilesDir(null), "romfs/game.bin").absolutePath
+
+        appendLog("[BOOT] Game Path: $gamePath")
+        if (File(gamePath).exists()) {
+            startEmulation(gamePath)
+        } else {
+            appendLog("[ERROR] File game tidak ditemukan! Silakan setup ROM kembali.")
+        }
     }
 
-    private fun appendLog(msg: String) {
-        tvLog.append("$msg\n")
-        scrollLog.post { scrollLog.fullScroll(View.FOCUS_DOWN) }
+    private fun startEmulation(gamePath: String) {
+        if (isEmulating) return
+        isEmulating = true
+
+        emulationThread = Thread({
+            appendLog("[CORE] Memulai Dynarmic JIT & GLES 3.2 Engine...")
+            try {
+                NativeLibrary.Run(gamePath)
+            } catch (e: Exception) {
+                appendLog("[FATAL] Core Error: ${e.message}")
+            }
+        }, "MHXX-CoreThread").apply { start() }
+    }
+
+    private fun stopEmulation() {
+        if (!isEmulating) return
+        isEmulating = false
+        try {
+            NativeLibrary.StopEmulation()
+            NativeLibrary.SurfaceDestroyed()
+        } catch (e: Exception) {
+            // ignore
+        }
     }
 
     @SuppressLint("ClickableViewAccessibility")
-    private fun bindControllerButton(resId: Int, buttonMask: Int) {
-        val btn = findViewById<TextView?>(resId) ?: return
-        btn.setOnTouchListener { view, event ->
-            when (event.action) {
+    private fun bindButton(view: View?, buttonType: Int) {
+        view?.setOnTouchListener { v, event ->
+            when (event.actionMasked) {
                 MotionEvent.ACTION_DOWN -> {
-                    view.alpha = 0.5f
-                    NativeBridge.sendButtonInput(buttonMask, true)
+                    NativeLibrary.InputEvent(buttonType, 1.0f)
+                    v.isPressed = true
                     true
                 }
                 MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
-                    view.alpha = 1.0f
-                    NativeBridge.sendButtonInput(buttonMask, false)
+                    NativeLibrary.InputEvent(buttonType, 0.0f)
+                    v.isPressed = false
                     true
                 }
                 else -> false
@@ -163,40 +167,43 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    override fun onWindowFocusChanged(hasFocus: Boolean) {
-        super.onWindowFocusChanged(hasFocus)
-        if (hasFocus) {
-            enableImmersiveMode()
+    private fun appendLog(msg: String) {
+        runOnUiThread {
+            if (::tvLog.isInitialized) {
+                tvLog.append("$msg\n")
+                scrollLog.post { scrollLog.fullScroll(View.FOCUS_DOWN) }
+            }
         }
+    }
+
+    private fun enableImmersiveMode() {
+        WindowCompat.setDecorFitsSystemWindows(window, false)
+        val controller = WindowCompat.getInsetsController(window, window.decorView)
+        controller.hide(WindowInsetsCompat.Type.systemBars())
+        controller.systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
     }
 
     override fun onResume() {
         super.onResume()
-        if (::glView.isInitialized) glView.onResume()
+        enableImmersiveMode()
+        try {
+            NativeLibrary.ResumeEmulation()
+        } catch (e: Exception) {
+            // ignore
+        }
     }
 
     override fun onPause() {
         super.onPause()
-        if (::glView.isInitialized) glView.onPause()
+        try {
+            NativeLibrary.PauseEmulation()
+        } catch (e: Exception) {
+            // ignore
+        }
     }
 
-    private fun enableImmersiveMode() {
-        try {
-            WindowCompat.setDecorFitsSystemWindows(window, false)
-            val controller = WindowInsetsControllerCompat(window, window.decorView)
-            controller.hide(WindowInsetsCompat.Type.systemBars())
-            controller.systemBarsBehavior =
-                WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
-        } catch (_: Exception) {
-            @Suppress("DEPRECATION")
-            window.decorView.systemUiVisibility = (
-                View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
-                or View.SYSTEM_UI_FLAG_FULLSCREEN
-                or View.SYSTEM_UI_FLAG_HIDE_NAVIGATION
-                or View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN
-                or View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION
-                or View.SYSTEM_UI_FLAG_LAYOUT_STABLE
-            )
-        }
+    override fun onDestroy() {
+        super.onDestroy()
+        stopEmulation()
     }
 }

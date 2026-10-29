@@ -1,6 +1,5 @@
 package com.nativeport.mhxx
 
-import android.app.Activity
 import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
@@ -10,12 +9,14 @@ import android.widget.ProgressBar
 import android.widget.TextView
 import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.appcompat.app.AppCompatActivity
+import org.citra.emu.NativeLibrary
+import org.citra.emu.ui.MainActivity as CitraMainActivity
+import org.citra.emu.utils.CitraDirectory
 import java.io.File
 import java.io.FileOutputStream
 import java.io.InputStream
 
-class SetupActivity : AppCompatActivity() {
+class SetupActivity : CitraMainActivity() {
 
     private var selectedRomUri: Uri? = null
     private var selectedUpdateUri: Uri? = null
@@ -46,9 +47,13 @@ class SetupActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
+        // 1. Inisialisasi storage
+        CitraDirectory.start(this)
+
         // Cek apakah aset game sudah pernah di-install sebelumnya
         val romfsFlag = File(getExternalFilesDir(null), "romfs/installed.flag")
-        if (romfsFlag.exists()) {
+        val gameBin = File(getExternalFilesDir(null), "romfs/game.bin")
+        if (romfsFlag.exists() && gameBin.exists()) {
             launchGame()
             return
         }
@@ -93,19 +98,36 @@ class SetupActivity : AppCompatActivity() {
                 val outputStream = FileOutputStream(targetFile)
 
                 val buffer = ByteArray(1024 * 1024 * 8) // 8 MB Buffer
-                var totalBytesRead = 0L
                 var bytesRead: Int
 
                 runOnUiThread { tvProgress.text = "Menginstal aset game (RomFS)..." }
 
                 while (inputStream?.read(buffer).also { bytesRead = it ?: -1 } != -1) {
                     outputStream.write(buffer, 0, bytesRead)
-                    totalBytesRead += bytesRead
                 }
 
                 outputStream.flush()
                 outputStream.close()
                 inputStream?.close()
+
+                // Pasang Update jika ada
+                selectedUpdateUri?.let { updateUri ->
+                    runOnUiThread { tvProgress.text = "Menginstal patch update v1.4.0 (.cia)..." }
+                    val tempCia = File(cacheDir, "update.cia")
+                    val ciaIn = contentResolver.openInputStream(updateUri)
+                    val ciaOut = FileOutputStream(tempCia)
+                    val ciaBuf = ByteArray(1024 * 1024 * 4)
+                    var cRead: Int
+                    while (ciaIn?.read(ciaBuf).also { cRead = it ?: -1 } != -1) {
+                        ciaOut.write(ciaBuf, 0, cRead)
+                    }
+                    ciaOut.flush()
+                    ciaOut.close()
+                    ciaIn?.close()
+
+                    NativeLibrary.InstallCIA(arrayOf(tempCia.absolutePath))
+                    tempCia.delete()
+                }
 
                 // Buat flag penanda bahwa instalasi selesai
                 File(romfsDir, "installed.flag").writeText("INSTALLED_OK")
@@ -126,7 +148,10 @@ class SetupActivity : AppCompatActivity() {
     }
 
     private fun launchGame() {
-        val intent = Intent(this, MainActivity::class.java)
+        val gameFile = File(getExternalFilesDir(null), "romfs/game.bin")
+        val intent = Intent(this, MainActivity::class.java).apply {
+            putExtra("game_path", gameFile.absolutePath)
+        }
         startActivity(intent)
         finish()
     }
@@ -146,4 +171,3 @@ class SetupActivity : AppCompatActivity() {
         return name
     }
 }
-

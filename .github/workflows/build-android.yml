@@ -9,7 +9,7 @@ on:
 
 jobs:
   build:
-    name: Build Android APK
+    name: Build Android APK (Option B Standalone)
     runs-on: ubuntu-latest
 
     steps:
@@ -22,24 +22,19 @@ jobs:
         java-version: '17'
         distribution: 'temurin'
 
-    - name: Ensure Android NDK & CMake
-      run: |
-        yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --licenses || true
-        $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --install "ndk;26.1.10909125" "cmake;3.22.1"
-
     - name: Set up Gradle 8.2
       uses: gradle/actions/setup-gradle@v3
       with:
         gradle-version: '8.2'
 
-    - name: Build Debug APK
+    - name: Build Release & Debug APK
       working-directory: android
       run: |
-        gradle assembleDebug --stacktrace
+        gradle assembleRelease --stacktrace
 
     - name: Upload APK Artifact
       uses: actions/upload-artifact@v4
       with:
         name: MHXX-Android-Native-APK
-        path: android/app/build/outputs/apk/debug/*.apk
+        path: android/app/build/outputs/apk/release/*.apk
         if-no-files-found: error

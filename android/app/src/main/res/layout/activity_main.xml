@@ -6,8 +6,8 @@
     android:background="#0A0A0C">
 
     <!-- OpenGL ES 3.2 Game Surface -->
-    <android.opengl.GLSurfaceView
-        android:id="@+id/gl_surface"
+    <SurfaceView
+        android:id="@+id/game_surface"
         android:layout_width="match_parent"
         android:layout_height="match_parent" />
 

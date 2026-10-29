@@ -36,6 +36,8 @@ core/build/
 *.o
 *.obj
 *.so
+!android/app/src/main/jniLibs/**/*.so
+!android/app/src/main/assets/**
 *.a
 *.dll
 *.dylib
@@ -63,4 +65,7 @@ Thumbs.db
 __pycache__/
 *.py[cod]
 *$py.class
+
+# Scratch & Tools
+tools/
 
