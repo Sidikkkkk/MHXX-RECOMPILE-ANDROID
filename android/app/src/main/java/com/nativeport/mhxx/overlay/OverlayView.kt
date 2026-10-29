@@ -41,7 +41,7 @@ class OverlayView @JvmOverloads constructor(
             invalidate()
         }
 
-    var hapticFeedbackEnabled: Boolean = true
+    var isHapticBuzzEnabled: Boolean = true
 
     private sealed interface TouchTarget {
         data class ControlTarget(val control: OverlayControl) : TouchTarget
@@ -267,7 +267,7 @@ class OverlayView @JvmOverloads constructor(
     }
 
     private fun buzz() {
-        if (!hapticFeedbackEnabled) return
+        if (!isHapticBuzzEnabled) return
         try {
             performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY)
         } catch (e: Exception) {
