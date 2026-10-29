@@ -16,7 +16,6 @@ import androidx.core.view.WindowInsetsControllerCompat
 import org.citra.emu.NativeLibrary
 import org.citra.emu.NativeLibrary.ButtonType
 import org.citra.emu.ui.EmulationActivity
-import org.citra.emu.ui.MainActivity as CitraMainActivity
 import org.citra.emu.utils.CitraDirectory
 import java.io.File
 
@@ -39,7 +38,6 @@ class MainActivity : EmulationActivity() {
 
         // Daftarkan activity singleton untuk JNI callbacks
         EmulationActivity.setInstance(this)
-        CitraMainActivity.setInstance(this)
 
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         setContentView(R.layout.activity_main)
@@ -244,7 +242,6 @@ class MainActivity : EmulationActivity() {
     override fun onResume() {
         super.onResume()
         EmulationActivity.setInstance(this)
-        CitraMainActivity.setInstance(this)
         enableImmersiveMode()
         try {
             NativeLibrary.ResumeEmulation()

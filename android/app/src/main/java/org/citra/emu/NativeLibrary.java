@@ -135,28 +135,25 @@ public final class NativeLibrary {
     }
 
     public static Context getMainContext() {
-        Context ctx = MainActivity.get();
-        if (ctx == null) {
-            ctx = EmulationActivity.get();
+        Activity act = EmulationActivity.get();
+        if (act != null && !act.isFinishing() && !act.isDestroyed()) {
+            return act;
         }
-        return ctx;
+        act = MainActivity.get();
+        if (act != null && !act.isFinishing() && !act.isDestroyed()) {
+            return act;
+        }
+        return null;
     }
 
     public static Context getEmulationContext() {
-        Context ctx = EmulationActivity.get();
-        if (ctx == null) {
-            ctx = MainActivity.get();
-        }
-        return ctx;
+        return getMainContext();
     }
 
     public static AssetManager getAssetManager() {
         Context context = getMainContext();
         if (context == null) {
-            context = getEmulationContext();
-            if (context == null) {
-                return null;
-            }
+            return null;
         }
         return context.getAssets();
     }
@@ -169,25 +166,18 @@ public final class NativeLibrary {
     }
 
     public static void showMessageDialog(int type, String msg) {
-        Context context = getMainContext();
-        if (context == null) {
-            context = getEmulationContext();
-            if (context == null) {
-                Log.e("citra", "showMessageDialog: " + msg);
-                return;
-            }
+        Activity activity = EmulationActivity.get();
+        if (activity == null || activity.isFinishing() || activity.isDestroyed()) {
+            activity = MainActivity.get();
         }
-        if (!(context instanceof Activity)) {
-            Log.e("citra", "showMessageDialog: context not activity: " + msg);
+        if (activity == null || activity.isFinishing() || activity.isDestroyed()) {
+            Log.e("citra", "showMessageDialog (no active activity): " + msg);
             return;
         }
-        final Activity activity = (Activity)context;
-        if (activity.isFinishing() || activity.isDestroyed()) {
-            return;
-        }
-        activity.runOnUiThread(() -> {
+        final Activity finalAct = activity;
+        finalAct.runOnUiThread(() -> {
             try {
-                AlertDialog.Builder builder = new AlertDialog.Builder(activity);
+                AlertDialog.Builder builder = new AlertDialog.Builder(finalAct);
                 builder.setTitle("Notice");
                 builder.setMessage(msg);
                 builder.setPositiveButton("OK", null);
