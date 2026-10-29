@@ -49,3 +49,4 @@ public class EmulationActivity extends AppCompatActivity {
     }
     public void showRunningSetting() {}
 }
+

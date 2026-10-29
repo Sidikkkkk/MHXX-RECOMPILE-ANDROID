@@ -135,11 +135,19 @@ public final class NativeLibrary {
     }
 
     public static Context getMainContext() {
-        return MainActivity.get();
+        Context ctx = MainActivity.get();
+        if (ctx == null) {
+            ctx = EmulationActivity.get();
+        }
+        return ctx;
     }
 
     public static Context getEmulationContext() {
-        return EmulationActivity.get();
+        Context ctx = EmulationActivity.get();
+        if (ctx == null) {
+            ctx = MainActivity.get();
+        }
+        return ctx;
     }
 
     public static AssetManager getAssetManager() {
@@ -169,19 +177,31 @@ public final class NativeLibrary {
                 return;
             }
         }
+        if (!(context instanceof Activity)) {
+            Log.e("citra", "showMessageDialog: context not activity: " + msg);
+            return;
+        }
         final Activity activity = (Activity)context;
+        if (activity.isFinishing() || activity.isDestroyed()) {
+            return;
+        }
         activity.runOnUiThread(() -> {
-            AlertDialog.Builder builder = new AlertDialog.Builder(activity);
-            builder.setTitle("Notice");
-            builder.setMessage(msg);
-            builder.show();
+            try {
+                AlertDialog.Builder builder = new AlertDialog.Builder(activity);
+                builder.setTitle("Notice");
+                builder.setMessage(msg);
+                builder.setPositiveButton("OK", null);
+                builder.show();
+            } catch (Exception e) {
+                Log.e("citra", "dialog exception", e);
+            }
         });
     }
 
     public static void showInputBoxDialog(int maxLength, String error, String hint, String button0,
                                           String button1, String button2) {
         EmulationActivity activity = EmulationActivity.get();
-        if (activity != null) {
+        if (activity != null && !activity.isFinishing()) {
             activity.runOnUiThread(
                 () -> activity.showInputBoxDialog(maxLength, error, hint, button0, button1, button2));
         }
@@ -189,7 +209,7 @@ public final class NativeLibrary {
 
     public static void showMiiSelectorDialog(boolean cancel, String title, String[] miis) {
         EmulationActivity activity = EmulationActivity.get();
-        if (activity != null) {
+        if (activity != null && !activity.isFinishing()) {
             activity.runOnUiThread(() -> activity.showMiiSelectorDialog(cancel, title, miis));
         }
     }
@@ -234,11 +254,11 @@ public final class NativeLibrary {
 
     public static void updateProgress(String name, long written, long total) {
         EmulationActivity activity1 = EmulationActivity.get();
-        if (activity1 != null) {
+        if (activity1 != null && !activity1.isFinishing()) {
             activity1.runOnUiThread(() -> activity1.updateProgress(name, written, total));
         } else {
             MainActivity activity2 = MainActivity.get();
-            if (activity2 != null) {
+            if (activity2 != null && !activity2.isFinishing()) {
                 activity2.runOnUiThread(() -> activity2.updateProgress(name, written, total));
             }
         }
@@ -246,7 +266,7 @@ public final class NativeLibrary {
 
     public static void pickImage(int width, int height) {
         EmulationActivity activity = EmulationActivity.get();
-        if (activity != null) {
+        if (activity != null && !activity.isFinishing()) {
             activity.runOnUiThread(() -> activity.pickImage(width, height));
         }
     }

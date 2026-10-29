@@ -31,3 +31,4 @@ public class MainActivity extends AppCompatActivity {
 
     public void updateProgress(String name, long written, long total) {}
 }
+

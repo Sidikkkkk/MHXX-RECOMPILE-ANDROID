@@ -16,6 +16,7 @@ import androidx.core.view.WindowInsetsControllerCompat
 import org.citra.emu.NativeLibrary
 import org.citra.emu.NativeLibrary.ButtonType
 import org.citra.emu.ui.EmulationActivity
+import org.citra.emu.ui.MainActivity as CitraMainActivity
 import org.citra.emu.utils.CitraDirectory
 import java.io.File
 
@@ -29,17 +30,45 @@ class MainActivity : EmulationActivity() {
 
     private var emulationThread: Thread? = null
     private var isEmulating = false
+    private var isSurfaceReady = false
+    private var targetGamePath: String = ""
 
     @SuppressLint("ClickableViewAccessibility")
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
+        // Daftarkan activity singleton untuk JNI callbacks
+        EmulationActivity.setInstance(this)
+        CitraMainActivity.setInstance(this)
+
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         setContentView(R.layout.activity_main)
         enableImmersiveMode()
 
-        // 1. Inisialisasi Storage & Config
+        // 1. Inisialisasi Storage & Core Config
         CitraDirectory.start(this)
+
+        // Migrasi path jika ada game.bin lama
+        val romfsDir = File(getExternalFilesDir(null), "romfs")
+        val legacyBin = File(romfsDir, "game.bin")
+        val standard3ds = File(romfsDir, "game.3ds")
+        if (legacyBin.exists() && (!standard3ds.exists() || standard3ds.length() == 0L)) {
+            legacyBin.renameTo(standard3ds)
+        }
+
+        val passedPath = intent.getStringExtra("game_path")
+        targetGamePath = when {
+            passedPath != null && File(passedPath).exists() -> {
+                if (passedPath.endsWith(".bin") && standard3ds.exists()) {
+                    standard3ds.absolutePath
+                } else {
+                    passedPath
+                }
+            }
+            standard3ds.exists() -> standard3ds.absolutePath
+            legacyBin.exists() -> legacyBin.absolutePath
+            else -> File(romfsDir, "game.3ds").absolutePath
+        }
 
         tvLog = findViewById(R.id.tv_onscreen_log)
         scrollLog = findViewById(R.id.scroll_log)
@@ -67,20 +96,30 @@ class MainActivity : EmulationActivity() {
             finish()
         }
 
-        // 2. Setup Surface Callback
+        appendLog("[SYSTEM] MHXX Native Engine siap.")
+        appendLog("[SYSTEM] Menyiapkan EGL Display & Surface...")
+
+        // 2. Setup Surface Callback - Core HANYA dimulai setelah EGL ANativeWindow valid
         gameSurface.holder.addCallback(object : SurfaceHolder.Callback {
             override fun surfaceCreated(holder: SurfaceHolder) {
-                appendLog("[GLES] Surface diciptakan, menghubungkan EGL...")
+                appendLog("[GLES] Surface diciptakan, mengaitkan ANativeWindow...")
                 NativeLibrary.SurfaceChanged(holder.surface)
+                isSurfaceReady = true
+                maybeStartEmulation()
             }
 
             override fun surfaceChanged(holder: SurfaceHolder, format: Int, width: Int, height: Int) {
-                appendLog("[GLES] Resolusi layar: ${width}x${height}")
+                appendLog("[GLES] Resolusi layar aktif: ${width}x${height}")
                 NativeLibrary.SurfaceChanged(holder.surface)
+                isSurfaceReady = true
+                if (!isEmulating) {
+                    maybeStartEmulation()
+                }
             }
 
             override fun surfaceDestroyed(holder: SurfaceHolder) {
                 appendLog("[GLES] Surface dihancurkan.")
+                isSurfaceReady = false
                 NativeLibrary.SurfaceDestroyed()
             }
         })
@@ -110,29 +149,36 @@ class MainActivity : EmulationActivity() {
         bindButton(findViewById(R.id.btn_r), ButtonType.N3DS_BUTTON_R)
         bindButton(findViewById(R.id.btn_start), ButtonType.N3DS_BUTTON_START)
         bindButton(findViewById(R.id.btn_select), ButtonType.N3DS_BUTTON_SELECT)
-
-        // 5. Jalankan Game
-        val gamePath = intent.getStringExtra("game_path")
-            ?: File(getExternalFilesDir(null), "romfs/game.bin").absolutePath
-
-        appendLog("[BOOT] Game Path: $gamePath")
-        if (File(gamePath).exists()) {
-            startEmulation(gamePath)
-        } else {
-            appendLog("[ERROR] File game tidak ditemukan! Silakan setup ROM kembali.")
-        }
     }
 
-    private fun startEmulation(gamePath: String) {
+    private fun maybeStartEmulation() {
         if (isEmulating) return
+        if (!isSurfaceReady) {
+            appendLog("[WAIT] Menunggu Surface EGL siap...")
+            return
+        }
+
+        val gameFile = File(targetGamePath)
+        if (!gameFile.exists()) {
+            appendLog("[ERROR] File ROM tidak ditemukan di: $targetGamePath")
+            return
+        }
+
+        if (!NativeLibrary.isValidFile(gameFile.name)) {
+            appendLog("[WARN] Ekstensi bukan format 3ds/cci: ${gameFile.name}")
+        }
+
         isEmulating = true
+        appendLog("[BOOT] Memulai Citra MMJ Core untuk: ${gameFile.name} (${gameFile.length() / (1024 * 1024)} MB)")
 
         emulationThread = Thread({
-            appendLog("[CORE] Memulai Dynarmic JIT & GLES 3.2 Engine...")
             try {
-                NativeLibrary.Run(gamePath)
-            } catch (e: Exception) {
-                appendLog("[FATAL] Core Error: ${e.message}")
+                NativeLibrary.Run(gameFile.absolutePath)
+                appendLog("[CORE] Emulasi game berhenti.")
+            } catch (t: Throwable) {
+                appendLog("[FATAL] Core Error: ${t.message}")
+            } finally {
+                isEmulating = false
             }
         }, "MHXX-CoreThread").apply { start() }
     }
@@ -177,14 +223,28 @@ class MainActivity : EmulationActivity() {
     }
 
     private fun enableImmersiveMode() {
-        WindowCompat.setDecorFitsSystemWindows(window, false)
-        val controller = WindowCompat.getInsetsController(window, window.decorView)
-        controller.hide(WindowInsetsCompat.Type.systemBars())
-        controller.systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+        try {
+            WindowCompat.setDecorFitsSystemWindows(window, false)
+            val controller = WindowCompat.getInsetsController(window, window.decorView)
+            controller?.hide(WindowInsetsCompat.Type.systemBars())
+            controller?.systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+        } catch (_: Exception) {
+            @Suppress("DEPRECATION")
+            window.decorView.systemUiVisibility = (
+                View.SYSTEM_UI_FLAG_LAYOUT_STABLE
+                or View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION
+                or View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN
+                or View.SYSTEM_UI_FLAG_HIDE_NAVIGATION
+                or View.SYSTEM_UI_FLAG_FULLSCREEN
+                or View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
+            )
+        }
     }
 
     override fun onResume() {
         super.onResume()
+        EmulationActivity.setInstance(this)
+        CitraMainActivity.setInstance(this)
         enableImmersiveMode()
         try {
             NativeLibrary.ResumeEmulation()
@@ -203,7 +263,7 @@ class MainActivity : EmulationActivity() {
     }
 
     override fun onDestroy() {
-        super.onDestroy()
         stopEmulation()
+        super.onDestroy()
     }
 }

@@ -9,6 +9,9 @@ import android.widget.ProgressBar
 import android.widget.TextView
 import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.core.view.WindowCompat
+import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.WindowInsetsControllerCompat
 import org.citra.emu.NativeLibrary
 import org.citra.emu.ui.MainActivity as CitraMainActivity
 import org.citra.emu.utils.CitraDirectory
@@ -46,19 +49,30 @@ class SetupActivity : CitraMainActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        CitraMainActivity.setInstance(this)
 
         // 1. Inisialisasi storage
         CitraDirectory.start(this)
 
+        // Migrasi otomatis jika sebelumnya tersimpan sebagai game.bin
+        val romfsDir = File(getExternalFilesDir(null), "romfs")
+        if (!romfsDir.exists()) romfsDir.mkdirs()
+
+        val oldBin = File(romfsDir, "game.bin")
+        val game3ds = File(romfsDir, "game.3ds")
+        if (oldBin.exists() && (!game3ds.exists() || game3ds.length() == 0L)) {
+            oldBin.renameTo(game3ds)
+        }
+
         // Cek apakah aset game sudah pernah di-install sebelumnya
-        val romfsFlag = File(getExternalFilesDir(null), "romfs/installed.flag")
-        val gameBin = File(getExternalFilesDir(null), "romfs/game.bin")
-        if (romfsFlag.exists() && gameBin.exists()) {
+        val romfsFlag = File(romfsDir, "installed.flag")
+        if (romfsFlag.exists() && game3ds.exists() && game3ds.length() > 0L) {
             launchGame()
             return
         }
 
         setContentView(R.layout.activity_setup)
+        enableImmersiveMode()
 
         tvRomStatus = findViewById(R.id.tv_rom_status)
         tvUpdateStatus = findViewById(R.id.tv_update_status)
@@ -79,6 +93,16 @@ class SetupActivity : CitraMainActivity() {
         }
     }
 
+    override fun updateProgress(name: String?, written: Long, total: Long) {
+        if (total > 0) {
+            val pct = ((written * 100) / total).toInt()
+            runOnUiThread {
+                progressBar.progress = pct
+                tvProgress.text = "Menginstal CIA ($pct%)..."
+            }
+        }
+    }
+
     private fun startExtractionPipeline() {
         val romUri = selectedRomUri ?: return
 
@@ -92,15 +116,15 @@ class SetupActivity : CitraMainActivity() {
                 val romfsDir = File(getExternalFilesDir(null), "romfs")
                 if (!romfsDir.exists()) romfsDir.mkdirs()
 
-                // Salin / Ekstrak stream ROM
+                // Salin ROM dengan ekstensi resmi .3ds yang dikenali Citra Loader
+                val targetFile = File(romfsDir, "game.3ds")
                 val inputStream: InputStream? = contentResolver.openInputStream(romUri)
-                val targetFile = File(romfsDir, "game.bin")
                 val outputStream = FileOutputStream(targetFile)
 
                 val buffer = ByteArray(1024 * 1024 * 8) // 8 MB Buffer
                 var bytesRead: Int
 
-                runOnUiThread { tvProgress.text = "Menginstal aset game (RomFS)..." }
+                runOnUiThread { tvProgress.text = "Menginstal aset game (RomFS / 3DS)..." }
 
                 while (inputStream?.read(buffer).also { bytesRead = it ?: -1 } != -1) {
                     outputStream.write(buffer, 0, bytesRead)
@@ -112,7 +136,7 @@ class SetupActivity : CitraMainActivity() {
 
                 // Pasang Update jika ada
                 selectedUpdateUri?.let { updateUri ->
-                    runOnUiThread { tvProgress.text = "Menginstal patch update v1.4.0 (.cia)..." }
+                    runOnUiThread { tvProgress.text = "Menginstal patch update (.cia)..." }
                     val tempCia = File(cacheDir, "update.cia")
                     val ciaIn = contentResolver.openInputStream(updateUri)
                     val ciaOut = FileOutputStream(tempCia)
@@ -148,12 +172,31 @@ class SetupActivity : CitraMainActivity() {
     }
 
     private fun launchGame() {
-        val gameFile = File(getExternalFilesDir(null), "romfs/game.bin")
+        val gameFile = File(getExternalFilesDir(null), "romfs/game.3ds")
         val intent = Intent(this, MainActivity::class.java).apply {
             putExtra("game_path", gameFile.absolutePath)
         }
         startActivity(intent)
         finish()
+    }
+
+    private fun enableImmersiveMode() {
+        try {
+            WindowCompat.setDecorFitsSystemWindows(window, false)
+            val controller = WindowCompat.getInsetsController(window, window.decorView)
+            controller?.hide(WindowInsetsCompat.Type.systemBars())
+            controller?.systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+        } catch (_: Exception) {
+            @Suppress("DEPRECATION")
+            window.decorView.systemUiVisibility = (
+                View.SYSTEM_UI_FLAG_LAYOUT_STABLE
+                or View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION
+                or View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN
+                or View.SYSTEM_UI_FLAG_HIDE_NAVIGATION
+                or View.SYSTEM_UI_FLAG_FULLSCREEN
+                or View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
+            )
+        }
     }
 
     private fun getFileName(uri: Uri): String {

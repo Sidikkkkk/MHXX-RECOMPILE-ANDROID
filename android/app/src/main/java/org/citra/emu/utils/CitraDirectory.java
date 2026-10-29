@@ -91,9 +91,9 @@ public final class CitraDirectory {
             nand.mkdirs();
             sdmc.mkdirs();
 
-            copyAssetFolder("shaders", shaders, false, context);
-            copyAssetFolder("sysdata", sysdata, false, context);
-            copyAssetFolder("config", config, false, context);
+            copyAssetFolder("shaders", shaders, true, context);
+            copyAssetFolder("sysdata", sysdata, true, context);
+            copyAssetFolder("config", config, true, context);
             copyAssetFolder("nand", nand, false, context);
             copyAssetFolder("sdmc", sdmc, false, context);
         } catch (Exception e) {
@@ -147,3 +147,4 @@ public final class CitraDirectory {
         }
     }
 }
+

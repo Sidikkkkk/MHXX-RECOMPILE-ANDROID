@@ -5,3 +5,4 @@ public class NetPlayManager {
         // NetPlay log / message stub
     }
 }
+
