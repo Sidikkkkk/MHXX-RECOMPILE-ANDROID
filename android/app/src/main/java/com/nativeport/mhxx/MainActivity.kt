@@ -339,7 +339,7 @@ class MainActivity : EmulationActivity() {
 
                 process = Runtime.getRuntime().exec(arrayOf("logcat", "-v", "time", "citra:V", "AndroidRuntime:E", "DEBUG:F", "*:S"))
                 val reader = BufferedReader(InputStreamReader(process.inputStream))
-                var line: String?
+                var line: String? = null
 
                 while (isCapturingLog && reader.readLine().also { line = it } != null) {
                     val l = line ?: continue
