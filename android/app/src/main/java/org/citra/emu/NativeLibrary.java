@@ -428,6 +428,8 @@ public final class NativeLibrary {
     public static native void SetBackgroundImage(int[] pixels, int width, int height);
     public static native void ResetCamera();
     public static native void reloadCheatCode();
+    public static native void InitSwapScreen(boolean enable);
+    public static native boolean GetSwapScreen();
 
     /**
      * memory editor

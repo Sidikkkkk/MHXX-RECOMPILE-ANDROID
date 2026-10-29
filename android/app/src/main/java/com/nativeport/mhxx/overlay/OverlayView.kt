@@ -43,16 +43,10 @@ class OverlayView @JvmOverloads constructor(
 
     var isHapticBuzzEnabled: Boolean = true
 
-    private sealed interface TouchTarget {
-        data class ControlTarget(val control: OverlayControl) : TouchTarget
-        data object StylusTarget : TouchTarget
-    }
-
-    private val pointerTargets = HashMap<Int, TouchTarget>()
+    private val pointerTargets = HashMap<Int, OverlayControl>()
     private val stickValues = HashMap<String, FloatArray>() // dx, dy in [-1.0 .. 1.0]
     private val heldButtons = HashSet<OverlayControl>()
     private var dpadState = 0
-    private var isStylusActive = false
 
     // Paint resources
     private val fillPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.FILL }
@@ -75,8 +69,17 @@ class OverlayView @JvmOverloads constructor(
     private fun radius(c: OverlayControl): Float = c.size * height / 2.0f
 
     private fun hit(c: OverlayControl, x: Float, y: Float): Boolean {
-        val r = radius(c) * if (c.kind == OverlayControl.Kind.CIRCLE_PAD || c.kind == OverlayControl.Kind.C_STICK) 1.2f else 1.05f
-        return hypot(x - cx(c), y - cy(c)) <= (r + 12f)
+        val r = radius(c)
+        val tolerance = when (c.kind) {
+            OverlayControl.Kind.CIRCLE_PAD -> r * 1.35f
+            OverlayControl.Kind.C_STICK -> r * 1.35f
+            OverlayControl.Kind.DPAD -> r * 1.30f
+            OverlayControl.Kind.BUTTON -> {
+                if (c.id == "start" || c.id == "select") r * 1.6f + 25f
+                else r * 1.45f + 30f
+            }
+        }
+        return hypot(x - cx(c), y - cy(c)) <= tolerance
     }
 
     override fun onTouchEvent(event: MotionEvent): Boolean {
@@ -107,10 +110,13 @@ class OverlayView @JvmOverloads constructor(
         val x = event.getX(index)
         val y = event.getY(index)
 
-        val hitControl = if (isControlsVisible) controls.lastOrNull { it.visible && hit(it, x, y) } else null
+        val hitControl = if (isControlsVisible) {
+            controls.filter { it.visible && hit(it, x, y) }
+                .minByOrNull { hypot(x - cx(it), y - cy(it)) }
+        } else null
 
         if (hitControl != null) {
-            pointerTargets[id] = TouchTarget.ControlTarget(hitControl)
+            pointerTargets[id] = hitControl
             buzz()
             when (hitControl.kind) {
                 OverlayControl.Kind.BUTTON -> {
@@ -124,12 +130,10 @@ class OverlayView @JvmOverloads constructor(
                     updateDpadFromTouch(hitControl, x, y)
                 }
             }
-        } else {
-            // Touchscreen 3DS (Stylus)
-            pointerTargets[id] = TouchTarget.StylusTarget
-            isStylusActive = true
-            NativeLibrary.TouchEvent(NativeLibrary.TouchEvent.TOUCH_PRESSED, x.toInt(), y.toInt())
         }
+        // Catatan Penting: JANGAN memanggil NativeLibrary.TouchEvent untuk sentuhan ambient di luar kontrol!
+        // Citra MMJ menganggap ketukan pada layar atas sebagai gestur swap screen yang menyebabkan layar
+        // berganti menjadi hitam (karena layar bawah MHXX hitam/kosong pada tampilan awal).
     }
 
     private fun handlePointerMove(event: MotionEvent, index: Int) {
@@ -137,56 +141,39 @@ class OverlayView @JvmOverloads constructor(
         val x = event.getX(index)
         val y = event.getY(index)
 
-        when (val target = pointerTargets[id]) {
-            is TouchTarget.ControlTarget -> {
-                when (target.control.kind) {
-                    OverlayControl.Kind.CIRCLE_PAD, OverlayControl.Kind.C_STICK -> {
-                        updateStick(target.control, x, y)
-                    }
-                    OverlayControl.Kind.DPAD -> {
-                        updateDpadFromTouch(target.control, x, y)
-                    }
-                    OverlayControl.Kind.BUTTON -> {}
-                }
+        val control = pointerTargets[id] ?: return
+        when (control.kind) {
+            OverlayControl.Kind.CIRCLE_PAD, OverlayControl.Kind.C_STICK -> {
+                updateStick(control, x, y)
             }
-            is TouchTarget.StylusTarget -> {
-                NativeLibrary.TouchEvent(NativeLibrary.TouchEvent.TOUCH_MOVED, x.toInt(), y.toInt())
+            OverlayControl.Kind.DPAD -> {
+                updateDpadFromTouch(control, x, y)
             }
-            null -> {}
+            OverlayControl.Kind.BUTTON -> {}
         }
     }
 
     private fun handlePointerUp(event: MotionEvent, index: Int) {
         val id = event.getPointerId(index)
-        when (val target = pointerTargets.remove(id)) {
-            is TouchTarget.ControlTarget -> {
-                when (target.control.kind) {
-                    OverlayControl.Kind.BUTTON -> {
-                        heldButtons.remove(target.control)
-                        NativeLibrary.InputEvent(target.control.buttonType, 0.0f)
-                    }
-                    OverlayControl.Kind.CIRCLE_PAD -> {
-                        stickValues.remove(target.control.id)
-                        NativeLibrary.InputEvent(ButtonType.N3DS_CPAD_X, 0.0f)
-                        NativeLibrary.InputEvent(ButtonType.N3DS_CPAD_Y, 0.0f)
-                    }
-                    OverlayControl.Kind.C_STICK -> {
-                        stickValues.remove(target.control.id)
-                        NativeLibrary.InputEvent(ButtonType.N3DS_STICK_X, 0.0f)
-                        NativeLibrary.InputEvent(ButtonType.N3DS_STICK_Y, 0.0f)
-                    }
-                    OverlayControl.Kind.DPAD -> {
-                        updateDpad(0)
-                    }
-                }
+        val control = pointerTargets.remove(id) ?: return
+        when (control.kind) {
+            OverlayControl.Kind.BUTTON -> {
+                heldButtons.remove(control)
+                NativeLibrary.InputEvent(control.buttonType, 0.0f)
             }
-            is TouchTarget.StylusTarget -> {
-                isStylusActive = false
-                val x = event.getX(index).toInt()
-                val y = event.getY(index).toInt()
-                NativeLibrary.TouchEvent(NativeLibrary.TouchEvent.TOUCH_RELEASED, x, y)
+            OverlayControl.Kind.CIRCLE_PAD -> {
+                stickValues.remove(control.id)
+                NativeLibrary.InputEvent(ButtonType.N3DS_CPAD_X, 0.0f)
+                NativeLibrary.InputEvent(ButtonType.N3DS_CPAD_Y, 0.0f)
             }
-            null -> {}
+            OverlayControl.Kind.C_STICK -> {
+                stickValues.remove(control.id)
+                NativeLibrary.InputEvent(ButtonType.N3DS_STICK_X, 0.0f)
+                NativeLibrary.InputEvent(ButtonType.N3DS_STICK_Y, 0.0f)
+            }
+            OverlayControl.Kind.DPAD -> {
+                updateDpad(0)
+            }
         }
     }
 
@@ -221,11 +208,11 @@ class OverlayView @JvmOverloads constructor(
         val dist = hypot(dx, dy)
 
         var mask = 0
-        if (dist >= 0.22f) {
-            if (dy < -0.35f) mask = mask or DPAD_UP
-            if (dy > 0.35f) mask = mask or DPAD_DOWN
-            if (dx < -0.35f) mask = mask or DPAD_LEFT
-            if (dx > 0.35f) mask = mask or DPAD_RIGHT
+        if (dist >= 0.15f) {
+            if (dy < -0.30f) mask = mask or DPAD_UP
+            if (dy > 0.30f) mask = mask or DPAD_DOWN
+            if (dx < -0.30f) mask = mask or DPAD_LEFT
+            if (dx > 0.30f) mask = mask or DPAD_RIGHT
         }
         updateDpad(mask)
     }
@@ -248,10 +235,6 @@ class OverlayView @JvmOverloads constructor(
     }
 
     fun releaseAll() {
-        if (isStylusActive) {
-            isStylusActive = false
-            NativeLibrary.TouchEvent(NativeLibrary.TouchEvent.TOUCH_RELEASED, 0, 0)
-        }
         for (c in heldButtons) {
             NativeLibrary.InputEvent(c.buttonType, 0.0f)
         }

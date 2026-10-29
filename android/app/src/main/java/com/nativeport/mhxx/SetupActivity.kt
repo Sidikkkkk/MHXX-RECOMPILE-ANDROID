@@ -54,6 +54,13 @@ class SetupActivity : CitraMainActivity() {
         // 1. Inisialisasi storage
         CitraDirectory.start(this)
 
+        // Izin audio jika diperlukan
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.M) {
+            if (checkSelfPermission(android.Manifest.permission.RECORD_AUDIO) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+                requestPermissions(arrayOf(android.Manifest.permission.RECORD_AUDIO), 1001)
+            }
+        }
+
         // Migrasi otomatis jika sebelumnya tersimpan sebagai game.bin
         val romfsDir = File(getExternalFilesDir(null), "romfs")
         if (!romfsDir.exists()) romfsDir.mkdirs()

@@ -62,6 +62,18 @@ class MainActivity : EmulationActivity() {
         // 1. Inisialisasi Storage & Core Config
         CitraDirectory.start(this)
 
+        // Nonaktifkan Screen Swap permanen agar Citra tidak pernah berganti ke layar hitam bawah
+        try {
+            NativeLibrary.InitSwapScreen(false)
+        } catch (ignored: Throwable) {}
+
+        // Izin perekaman audio jika diperlukan oleh Cubeb sink
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.M) {
+            if (checkSelfPermission(android.Manifest.permission.RECORD_AUDIO) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+                requestPermissions(arrayOf(android.Manifest.permission.RECORD_AUDIO), 1002)
+            }
+        }
+
         // Migrasi path jika ada game.bin lama
         val romfsDir = File(getExternalFilesDir(null), "romfs")
         val legacyBin = File(romfsDir, "game.bin")
@@ -280,53 +292,42 @@ class MainActivity : EmulationActivity() {
                     .setPositiveButton(button0 ?: "OK") { _, _ ->
                         val text = inputView.text.toString().trim().ifEmpty { "Hunter" }
                         appendLog("[SWKBD] Nama disimpan: '$text'")
-                        NativeLibrary.KeyboardEvent(0, text)
+                        Thread {
+                            NativeLibrary.KeyboardEvent(0, text)
+                        }.start()
                         enableImmersiveMode()
-                        try {
-                            NativeLibrary.WindowChanged()
-                            NativeLibrary.ResumeEmulation()
-                        } catch (ignored: Exception) {}
                     }
 
                 if (!button1.isNullOrEmpty()) {
                     dialog.setNegativeButton(button1) { _, _ ->
                         appendLog("[SWKBD] Batal dipilih")
-                        NativeLibrary.KeyboardEvent(1, "")
+                        Thread {
+                            NativeLibrary.KeyboardEvent(1, "")
+                        }.start()
                         enableImmersiveMode()
-                        try {
-                            NativeLibrary.WindowChanged()
-                            NativeLibrary.ResumeEmulation()
-                        } catch (ignored: Exception) {}
                     }
                 }
 
                 if (!button2.isNullOrEmpty()) {
                     dialog.setNeutralButton(button2) { _, _ ->
                         appendLog("[SWKBD] Tombol opsi 2 dipilih")
-                        NativeLibrary.KeyboardEvent(2, "")
+                        Thread {
+                            NativeLibrary.KeyboardEvent(2, "")
+                        }.start()
                         enableImmersiveMode()
-                        try {
-                            NativeLibrary.WindowChanged()
-                            NativeLibrary.ResumeEmulation()
-                        } catch (ignored: Exception) {}
                     }
                 }
 
                 dialog.setOnDismissListener {
                     enableImmersiveMode()
-                    try {
-                        NativeLibrary.WindowChanged()
-                        NativeLibrary.ResumeEmulation()
-                    } catch (ignored: Exception) {}
                 }
 
                 dialog.show()
             } catch (e: Exception) {
                 appendLog("[SWKBD] Gagal menampilkan dialog: ${e.message}, fallback: 'Hunter'")
-                NativeLibrary.KeyboardEvent(0, "Hunter")
-                try {
-                    NativeLibrary.ResumeEmulation()
-                } catch (ignored: Exception) {}
+                Thread {
+                    NativeLibrary.KeyboardEvent(0, "Hunter")
+                }.start()
             }
         }
     }
@@ -460,6 +461,9 @@ class MainActivity : EmulationActivity() {
         super.onResume()
         EmulationActivity.setInstance(this)
         enableImmersiveMode()
+        try {
+            NativeLibrary.InitSwapScreen(false)
+        } catch (ignored: Throwable) {}
         try {
             NativeLibrary.WindowChanged()
             NativeLibrary.ResumeEmulation()
